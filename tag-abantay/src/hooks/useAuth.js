@@ -162,6 +162,20 @@ export const useAuth = () => {
     }
   }
 
+  const sendMagicLink = async (email) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const result = await authService.sendMagicLink(email)
+      return result
+    } catch (err) {
+      setError(err)
+      return { data: null, error: err }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const isAdmin = () => {
     return profile?.role === 'admin'
   }
@@ -185,6 +199,7 @@ export const useAuth = () => {
     signOut,
     updateProfile,
     updatePassword,
+    sendMagicLink,
     isAuthenticated: !!user,
     isAdmin: isAdmin(),
     isFaculty: isFaculty(),
