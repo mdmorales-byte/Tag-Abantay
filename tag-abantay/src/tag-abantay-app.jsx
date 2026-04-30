@@ -41,9 +41,21 @@ export default function TagAbantayApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Use custom hooks
-  const { user, isAuthenticated, isAdmin, signIn, signOut, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, isAdmin, signIn, signUp, signOut, loading: authLoading } = useAuth();
   const { currentAlert, alertInfo, isActive } = useAlerts();
   const { safetyStats, submitCheckIn, reloadStats } = useCheckIns(user?.id);
+
+  // Handle URL parameters for QR code registration
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page === 'signup' && !isAuthenticated) {
+      setCurrentPage('login');
+      // We'll pass a hint to the LoginPage to show the signup tab by default
+      window.history.replaceState({}, '', window.location.pathname); // Clean URL
+      sessionStorage.setItem('auth_mode_hint', 'signup');
+    }
+  }, [isAuthenticated]);
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -119,7 +131,13 @@ export default function TagAbantayApp() {
         {currentPage === 'home' && <HomePage setCurrentPage={setCurrentPage} typhoonAlert={typhoonAlert} />}
         {currentPage === 'alerts' && <AlertsPage typhoonAlert={typhoonAlert} alertInfo={alertInfo} />}
         {currentPage === 'map' && <EvacuationMapPage />}
-        {currentPage === 'login' && !isAuthenticated && <LoginPage handleLogin={handleLogin} setCurrentPage={setCurrentPage} />}
+        {currentPage === 'login' && !isAuthenticated && (
+          <LoginPage 
+            handleLogin={handleLogin} 
+            handleSignUp={signUp} 
+            setCurrentPage={setCurrentPage} 
+          />
+        )}
         {currentPage === 'dashboard' && isAuthenticated && (
           isAdmin ? 
             <AdminDashboard safetyStats={safetyStats} /> : 
@@ -1046,28 +1064,50 @@ function EvacuationCenter({ name, capacity, distance, status }) {
 }
 
 // Login Page
-function LoginPage({ handleLogin, setCurrentPage }) {
+function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Check for signup hint from QR code
+  useEffect(() => {
+    const hint = sessionStorage.getItem('auth_mode_hint');
+    if (hint === 'signup') {
+      setIsSignUp(true);
+      sessionStorage.removeItem('auth_mode_hint');
+    }
+  }, []);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    console.log('Attempting login with:', email);
     
     try {
-      const result = await handleLogin(email, password);
-      console.log('Login result:', result);
-      
-      if (!result.success) {
-        setError(result.error?.message || 'Login failed. Please check your credentials.');
+      if (isSignUp) {
+        if (!fullName.trim()) {
+          setError('Please enter your full name');
+          setLoading(false);
+          return;
+        }
+        const result = await handleSignUp(email, password, { full_name: fullName });
+        if (result.success) {
+          alert('Check your email for the confirmation link!');
+          setIsSignUp(false);
+        } else {
+          setError(result.error?.message || 'Sign up failed.');
+        }
+      } else {
+        const result = await handleLogin(email, password);
+        if (!result.success) {
+          setError(result.error?.message || 'Login failed.');
+        }
       }
     } catch (err) {
-      console.error('Login error:', err);
       setError(err.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
@@ -1079,17 +1119,55 @@ function LoginPage({ handleLogin, setCurrentPage }) {
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
         <div className="text-center mb-8">
           <img src="https://i.imgur.com/SPc6uhg.png" alt="AdNU Logo" className="w-16 h-16 mx-auto mb-4 rounded-full object-cover" />
-          <h1 className="text-3xl font-bold text-white mb-2">AdNU Login</h1>
-          <p className="text-gray-400">Sign in with your institutional account</p>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {isSignUp ? 'Registration' : 'AdNU Login'}
+          </h1>
+          <p className="text-gray-400">
+            {isSignUp 
+              ? 'Students, Staff & Faculty Registration' 
+              : 'Sign in with your institutional account'}
+          </p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex bg-slate-900 rounded-lg p-1 mb-8">
+          <button
+            onClick={() => setIsSignUp(false)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isSignUp ? 'bg-cyan-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => setIsSignUp(true)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isSignUp ? 'bg-cyan-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+          >
+            Register
+          </button>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 animate-shake">
               <p className="text-red-400 text-sm">{error}</p>
             </div>
           )}
           
+          {isSignUp && (
+            <div className="animate-fadeIn">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Juan D. Dela Cruz"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                required={isSignUp}
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Email Address
@@ -1129,6 +1207,11 @@ function LoginPage({ handleLogin, setCurrentPage }) {
                 )}
               </button>
             </div>
+            {isSignUp && (
+              <p className="mt-2 text-xs text-gray-500">
+                Password must be at least 6 characters.
+              </p>
+            )}
           </div>
 
           <button
@@ -1136,7 +1219,7 @@ function LoginPage({ handleLogin, setCurrentPage }) {
             disabled={loading}
             className="w-full px-6 py-3 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-cyan-500/30"
           >
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? (isSignUp ? 'Creating Account...' : 'Signing In...') : (isSignUp ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
