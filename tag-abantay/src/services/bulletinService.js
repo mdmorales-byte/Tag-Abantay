@@ -25,9 +25,21 @@ async function supabaseFetch(table, options = {}) {
     id = null
   } = options
 
-  // Get user's JWT token from session
-  const { data: { session } } = await supabase.auth.getSession()
-  const userToken = session?.access_token || SUPABASE_ANON_KEY
+  // Get user's JWT token from manual session (since supabase persistence is disabled)
+  let userToken = SUPABASE_ANON_KEY
+  try {
+    const saved = localStorage.getItem('manual_session')
+    if (saved) {
+      const sessionData = JSON.parse(saved)
+      userToken = sessionData?.session?.access_token || sessionData?.access_token || SUPABASE_ANON_KEY
+    }
+  } catch (e) {
+    // Fallback to anon key
+  }
+
+  if (userToken === SUPABASE_ANON_KEY) {
+    console.warn('bulletinService: Using anon key (no user session token found)')
+  }
 
   let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`
   
@@ -57,27 +69,47 @@ async function supabaseFetch(table, options = {}) {
 
   const fetchOptions = {
     method,
-    headers
+    headers,
+    signal: AbortSignal.timeout(3000) // Aggressive 3 second timeout
   }
 
   if (body) {
     fetchOptions.body = JSON.stringify(body)
   }
 
-  const response = await fetch(url, fetchOptions)
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: `HTTP ${response.status}` }))
-    throw new Error(error.message || `HTTP ${response.status}`)
-  }
+  try {
+    const response = await fetch(url, fetchOptions)
 
-  // DELETE returns empty body
-  if (method === 'DELETE') {
-    return { data: null, error: null }
-  }
+    if (!response.ok) {
+      let details = ''
+      try {
+        const text = await response.text()
+        details = text
+      } catch (_) {
+        // ignore
+      }
 
-  const data = await response.json()
-  return { data, error: null }
+      // Try to extract a useful message from PostgREST/Supabase
+      let message = `HTTP ${response.status}`
+      try {
+        const parsed = details ? JSON.parse(details) : null
+        message = parsed?.message || parsed?.error_description || parsed?.hint || parsed?.details || message
+      } catch (_) {
+        // not JSON
+        if (details) message = `${message}: ${details}`
+      }
+
+      throw new Error(message)
+    }
+
+    if (method === 'DELETE') return { data: null, error: null }
+
+    const data = await response.json()
+    return { data: Array.isArray(data) ? data : (data ? [data] : []), error: null }
+  } catch (error) {
+    console.warn(`Fetch timeout/error for ${table}:`, error.message)
+    return { data: [], error: error.message }
+  }
 }
 
 
@@ -90,7 +122,11 @@ export const announcementService = {
       order: 'created_at.desc',
       limit: 100
     })
-    return { success: true, data: result.data }
+    const data = (result.data || []).map(a => ({
+      ...a,
+      content: a?.content ?? a?.message
+    }))
+    return { success: true, data }
   },
 
   // Get latest announcements (limited)
@@ -100,28 +136,40 @@ export const announcementService = {
       order: 'created_at.desc',
       limit
     })
-    return { success: true, data: result.data }
+    const data = (result.data || []).map(a => ({
+      ...a,
+      content: a?.content ?? a?.message
+    }))
+    return { success: true, data }
   },
 
   // Create announcement
   async create({ title, content }) {
     const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
       method: 'POST',
-      body: { title, content },
+      // DB column is `message`; UI uses `content`
+      body: { title, message: content },
       select: '*'
     })
-    return { success: true, data: result.data?.[0] }
+
+    if (result.error) {
+      return { success: false, error: result.error }
+    }
+
+    const row = result.data?.[0]
+    return { success: true, data: row ? { ...row, content: row?.content ?? row?.message } : null }
   },
 
   // Update announcement
   async update(id, { title, content }) {
     const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
       method: 'PATCH',
-      body: { title, content, updated_at: new Date().toISOString() },
+      body: { title, message: content, updated_at: new Date().toISOString() },
       id,
       select: '*'
     })
-    return { success: true, data: result.data?.[0] }
+    const row = result.data?.[0]
+    return { success: true, data: row ? { ...row, content: row?.content ?? row?.message } : null }
   },
 
   // Delete announcement

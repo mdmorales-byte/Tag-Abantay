@@ -1,47 +1,85 @@
 // src/services/evacuationService.js
 import { supabase, TABLES } from './supabaseClient'
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// Helper function for direct Supabase REST API calls with timeout
+async function supabaseFetch(table, options = {}) {
+  const {
+    method = 'GET',
+    body = null,
+    select = '*',
+    order = null,
+    eq = null
+  } = options
+
+  // Get user's JWT token from manual session (since supabase persistence is disabled)
+  let userToken = SUPABASE_ANON_KEY
+  try {
+    const saved = localStorage.getItem('manual_session')
+    if (saved) {
+      const sessionData = JSON.parse(saved)
+      userToken = sessionData?.session?.access_token || sessionData?.access_token || SUPABASE_ANON_KEY
+    }
+  } catch (e) {
+    // Fallback to anon key
+  }
+
+  let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`
+  if (order) url += `&order=${encodeURIComponent(order)}`
+  if (eq) url += `&${encodeURIComponent(eq.column)}=eq.${encodeURIComponent(eq.value)}`
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+        'Prefer': (method === 'POST' || method === 'PATCH') ? 'return=representation' : undefined
+      },
+      body: body ? JSON.stringify(body) : null,
+      signal: AbortSignal.timeout(3000) // 3 second timeout
+    })
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const data = await response.json()
+    return { data: Array.isArray(data) ? data : (data ? [data] : []), error: null }
+  } catch (error) {
+    console.warn(`Evacuation Fetch Error (${table}):`, error.message)
+    return { data: [], error: error.message }
+  }
+}
+
 export const evacuationService = {
   /**
    * Get all active evacuation routes
    */
   async getEvacuationRoutes() {
-    const { data, error } = await supabase
-      .from(TABLES.EVACUATION_ROUTES)
-      .select('*')
-      .eq('is_active', true)
-      .order('distance_from_campus_km', { ascending: true })
-
-    if (error) throw error
-    return { data, error: null }
+    return await supabaseFetch(TABLES.EVACUATION_ROUTES, {
+      eq: { column: 'is_active', value: 'true' },
+      order: 'distance_from_campus_km.asc'
+    })
   },
 
   /**
    * Get single evacuation route by ID
    */
   async getEvacuationRoute(routeId) {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.EVACUATION_ROUTES)
-        .select('*')
-        .eq('id', routeId)
-        .single()
-
-      if (error) throw error
-      return { data, error: null }
-    } catch (error) {
-      // Silently handle - expected in demo mode
-      return { data: null, error: null }
-    }
+    const result = await supabaseFetch(TABLES.EVACUATION_ROUTES, {
+      eq: { column: 'id', value: routeId }
+    })
+    return { data: result.data?.[0] || null, error: result.error }
   },
 
   /**
    * Create new evacuation route (admin only)
    */
   async createEvacuationRoute(routeData) {
-    const { data, error } = await supabase
-      .from(TABLES.EVACUATION_ROUTES)
-      .insert({
+    const result = await supabaseFetch(TABLES.EVACUATION_ROUTES, {
+      method: 'POST',
+      body: {
         name: routeData.name,
         description: routeData.description,
         capacity: routeData.capacity,
@@ -50,42 +88,32 @@ export const evacuationService = {
         longitude: routeData.longitude,
         geojson: routeData.geojson,
         is_active: true
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-    return { data, error: null }
+      }
+    })
+    return { data: result.data?.[0] || null, error: result.error }
   },
 
   /**
    * Update evacuation route (admin only)
    */
   async updateEvacuationRoute(routeId, updates) {
-    const { data, error } = await supabase
-      .from(TABLES.EVACUATION_ROUTES)
-      .update(updates)
-      .eq('id', routeId)
-      .select()
-      .single()
-
-    if (error) throw error
-    return { data, error: null }
+    const result = await supabaseFetch(TABLES.EVACUATION_ROUTES, {
+      method: 'PATCH',
+      eq: { column: 'id', value: routeId },
+      body: updates
+    })
+    return { data: result.data?.[0] || null, error: result.error }
   },
 
   /**
    * Delete evacuation route (admin only)
    */
   async deleteEvacuationRoute(routeId) {
-    const { data, error } = await supabase
-      .from(TABLES.EVACUATION_ROUTES)
-      .update({ is_active: false })
-      .eq('id', routeId)
-      .select()
-      .single()
-
-    if (error) throw error
-    return { data, error: null }
+    return await supabaseFetch(TABLES.EVACUATION_ROUTES, {
+      method: 'PATCH',
+      eq: { column: 'id', value: routeId },
+      body: { is_active: false }
+    })
   },
 
   /**

@@ -1,6 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Shield, MapPin, Users, Bell, CloudRain, X, Menu, ChevronRight, Home, Send, Eye, EyeOff, Info } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+
+// CLEANUP FIX: Clear only the hanging Supabase locks without logging the user out
+if (typeof window !== 'undefined') {
+  Object.keys(localStorage).forEach(key => {
+    if (key.includes('sb-') && key.includes('auth-token-lock')) {
+      localStorage.removeItem(key);
+      console.log('CLEANUP: Removed hanging storage lock:', key);
+    }
+  });
+}
+
+import { AlertTriangle, Shield, MapPin, Users, Bell, CloudRain, X, Menu, ChevronRight, Home, Send, Eye, EyeOff, Info, QrCode } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
+import { QRCodeSVG } from 'qrcode.react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from './services/supabaseClient';
@@ -1426,62 +1438,53 @@ function StatusButton({ selected, onClick, color, label }) {
 function AdminDashboard({ safetyStats: initialStats }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [checkIns, setCheckIns] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [alerts, setAlerts] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [loading, setLoading] = useState(false); // ALWAYS FALSE
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [safetyStats, setSafetyStats] = useState(initialStats || { safe: 0, needsHelp: 0, unreachable: 0, notReported: 0 });
 
-  // Fetch real check-ins and stats on mount
+  // Master Data Loader
   useEffect(() => {
-    loadCheckIns();
-    loadSafetyStats();
-
-    // Safety timeout - force loading to false after 5 seconds
-    const timeoutId = setTimeout(() => {
-      setLoading(current => {
-        if (current) {
-          console.log('AdminDashboard: Forcing loading to false after timeout');
-          return false;
+    const loadAllData = async () => {
+      // Don't set loading to true anymore
+      try {
+        if (activeTab === 'overview') {
+          loadCheckIns(false);
+          loadSafetyStats();
+        } else if (activeTab === 'alerts') {
+          const res = await alertService.getAllAlerts();
+          setAlerts(res.data || []);
+        } else if (activeTab === 'announcements') {
+          const res = await announcementService.getAll();
+          setAnnouncements(res.data || []);
+        } else if (activeTab === 'maps') {
+          const res = await evacuationService.getEvacuationRoutes();
+          setRoutes(res.data || []);
+        } else if (activeTab === 'gallery') {
+          const res = await galleryService.getAll();
+          setGalleryImages(res.data || []);
         }
-        return current;
-      });
-    }, 5000);
-
-    // Subscribe to real-time updates - with error handling
-    let subscription = null;
-    try {
-      subscription = checkInService.subscribeToCheckIns((payload) => {
-        console.log('New check-in:', payload);
-        loadCheckIns(false); // don't show loading spinner on real-time refresh
-        loadSafetyStats();
-      });
-    } catch (err) {
-      console.error('Failed to subscribe to check-ins:', err);
-    }
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (subscription) {
-        try {
-          checkInService.unsubscribeFromCheckIns(subscription);
-        } catch (e) {
-          console.warn('Error unsubscribing:', e);
-        }
+      } catch (err) {
+        console.warn(`AdminDashboard: Silent load failure:`, err.message);
       }
     };
-  }, []);
+
+    loadAllData();
+  }, [activeTab]);
 
   const loadCheckIns = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
       const result = await checkInService.getAllCheckIns(50);
-      if (result.data) {
-        setCheckIns(result.data);
-      }
+      if (result.data) setCheckIns(result.data);
     } catch (err) {
       console.error('Error loading check-ins:', err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -1580,8 +1583,11 @@ function AdminDashboard({ safetyStats: initialStats }) {
         <AdminTab active={activeTab === 'maps'} onClick={() => setActiveTab('maps')} icon={MapPin}>
           Evacuation
         </AdminTab>
-        <AdminTab active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')} icon={Eye}>
+        <AdminTab active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')} icon={Info}>
           Gallery
+        </AdminTab>
+        <AdminTab active={activeTab === 'registration'} onClick={() => setActiveTab('registration')} icon={QrCode}>
+          Student QR
         </AdminTab>
       </div>
 
@@ -1718,6 +1724,93 @@ function AdminDashboard({ safetyStats: initialStats }) {
       {activeTab === 'announcements' && <AdminAnnouncements />}
       {activeTab === 'maps' && <AdminEvacuation />}
       {activeTab === 'gallery' && <AdminGallery />}
+      {activeTab === 'registration' && <AdminRegistrationQR />}
+    </div>
+  );
+}
+
+// Admin Student Registration QR Component
+function AdminRegistrationQR() {
+  const [appUrl, setAppUrl] = useState(window.location.origin);
+  const registrationUrl = `${appUrl}?page=signup`;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 animate-fadeIn">
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50 text-center">
+        <h3 className="text-2xl font-bold text-white mb-2">Student Registration QR Code</h3>
+        <p className="text-gray-400 mb-8 max-w-lg mx-auto">
+          Display this QR code around campus. Students can scan it to officially register for Tag-Abantay with their @adnu.edu.ph email.
+        </p>
+
+        <div className="bg-white p-6 rounded-2xl inline-block mb-8 shadow-2xl shadow-cyan-500/20 border-4 border-cyan-500">
+          <QRCodeSVG 
+            value={registrationUrl} 
+            size={256}
+            level="H"
+            includeMargin={true}
+          />
+        </div>
+
+        <div className="space-y-4">
+          <p className="text-sm text-cyan-400 font-mono break-all bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 inline-block px-6">
+            {registrationUrl}
+          </p>
+          
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/20"
+            >
+              <QrCode className="w-5 h-5" />
+              Print QR Code
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(registrationUrl);
+                alert('Registration link copied to clipboard!');
+              }}
+              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold transition-all"
+            >
+              Copy Link
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50">
+          <h4 className="text-white font-bold mb-4 flex items-center gap-2">
+            <Shield className="w-5 h-5 text-cyan-400" />
+            Security Features
+          </h4>
+          <ul className="text-sm text-gray-400 space-y-3">
+            <li className="flex gap-2">
+              <span className="text-cyan-400">•</span>
+              Only @adnu.edu.ph emails are allowed.
+            </li>
+            <li className="flex gap-2">
+              <span className="text-cyan-400">•</span>
+              Email verification is required before access.
+            </li>
+            <li className="flex gap-2">
+              <span className="text-cyan-400">•</span>
+              Automatic student role assignment.
+            </li>
+          </ul>
+        </div>
+        
+        <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50">
+          <h4 className="text-white font-bold mb-4 flex items-center gap-2">
+            <Info className="w-5 h-5 text-cyan-400" />
+            Instructions
+          </h4>
+          <p className="text-sm text-gray-400 leading-relaxed">
+            1. Print the QR code and place it at AdNU entrances or bulletin boards.<br/>
+            2. Students scan it and are redirected to the registration page.<br/>
+            3. Once they verify their email, they can start using Tag-Abantay.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2547,7 +2640,7 @@ function AdminEvacuation() {
       // Subscribe to real-time evacuation route updates
       channel = evacuationService.subscribeToRoutes((payload) => {
         if (payload.eventType === 'INSERT') {
-          setRoutes(prev => [...prev, payload.new]);
+          setRoutes(prev => (prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]));
         } else if (payload.eventType === 'UPDATE') {
           setRoutes(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
         } else if (payload.eventType === 'DELETE') {
@@ -2603,7 +2696,7 @@ function AdminEvacuation() {
     });
     
     if (result.data) {
-      setRoutes(prev => [...prev, result.data]);
+      setRoutes(prev => (prev.some(r => r.id === result.data.id) ? prev : [...prev, result.data]));
       setFormData({
         name: '',
         description: '',
@@ -2811,45 +2904,39 @@ function AdminEvacuation() {
                 />
               </MapContainer>
             </div>
-            <p className="text-xs text-gray-500 mt-2">
-              💡 Tip: Click anywhere on the map to place the evacuation center. Drag the green marker to adjust.
-            </p>
           </div>
-          <div className="flex space-x-3">
+          
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white font-semibold rounded-lg transition-all"
+          >
+            {saving ? 'Saving...' : isEditing ? 'Update Route' : 'Add Evacuation Route'}
+          </button>
+          {isEditing && (
             <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white rounded-lg transition-all"
+              type="button"
+              onClick={handleCancel}
+              className="w-full mt-2 px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all"
             >
-              {saving ? 'Saving...' : (isEditing ? 'Update Route' : 'Add Route')}
+              Cancel Edit
             </button>
-            {isEditing && (
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-all"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
+          )}
         </form>
       </div>
 
       {/* Routes List */}
-      <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
-        <h3 className="text-lg font-semibold text-white mb-4">Evacuation Routes</h3>
+      <div className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700/50">
+        <h3 className="text-xl font-bold text-white mb-6">Active Evacuation Routes</h3>
+        
         {routes.length === 0 ? (
-          <p className="text-gray-400">No evacuation routes yet.</p>
+          <p className="text-gray-500">No evacuation routes configured.</p>
         ) : (
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-6">
             {routes.map((route) => (
-              <div
-                key={route.id}
-                className="p-4 rounded-xl border border-slate-700 bg-slate-800/30"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h4 className="text-white font-semibold">{route.name}</h4>
+              <div key={route.id} className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 group hover:border-cyan-500/50 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <h4 className="text-lg font-bold text-white">{route.name}</h4>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleEdit(route)}

@@ -89,36 +89,27 @@ let useSimulatedMode = false
 
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
-    // Use simulated client if env vars are missing
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.warn('Supabase credentials missing - using demo mode')
+    const url = import.meta.env.VITE_SUPABASE_URL
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    if (!url || !key) {
       supabaseInstance = createSimulatedClient()
       useSimulatedMode = true
     } else {
-      console.log('Connecting to Supabase:', supabaseUrl)
-      try {
-        supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-          auth: {
-            autoRefreshToken: true,
-            persistSession: true,
-            detectSessionInUrl: true
-          },
-          realtime: {
-            params: {
-              eventsPerSecond: 10
-            }
-          },
-          global: {
-            headers: {
-              'Accept': 'application/json',
-              'Prefer': 'return=representation'
-            }
+      // Disable ALL persistence to prevent storage locks and hangs
+      supabaseInstance = createClient(url, key, {
+        auth: {
+          persistSession: false, // DO NOT save to localStorage
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          storage: {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {}
           }
-        })
-      } catch (error) {
-        supabaseInstance = createSimulatedClient()
-        useSimulatedMode = true
-      }
+        }
+      })
+      useSimulatedMode = false
     }
   }
   return supabaseInstance

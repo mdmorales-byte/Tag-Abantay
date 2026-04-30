@@ -35,34 +35,21 @@ export const useAuth = () => {
   }, [])
 
   const checkSession = async () => {
-    // Safety timeout - ensure loading is always set to false
-    const timeoutId = setTimeout(() => setLoading(false), 4000)
-    
+    setLoading(true);
     try {
-      const { session } = await authService.getSession()
-      setSession(session)
-      setUser(session?.user || null)
-
-      if (session?.user) {
-        try {
-          const { data: profile } = await authService.getUserProfile(session.user.id)
-          setProfile(profile)
-        } catch (profileErr) {
-          // Profile fetch failed - use default
-          setProfile({
-            id: session.user.id,
-            email: session.user.email,
-            role: 'student',
-            full_name: session.user.email?.split('@')[0] || 'User'
-          })
-        }
+      // Check manual session first to avoid hanging library calls
+      const saved = localStorage.getItem('manual_session');
+      if (saved) {
+        const result = JSON.parse(saved);
+        setUser(result.user);
+        setSession(result.session);
+        setProfile(result.profile);
+        console.log('useAuth: Recovered manual session');
       }
     } catch (err) {
-      // Silently handle session check errors
-      setError(err)
+      console.warn('useAuth: Manual session recovery failed', err);
     } finally {
-      clearTimeout(timeoutId)
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -71,15 +58,7 @@ export const useAuth = () => {
       setLoading(true)
       setError(null)
       
-      // Add timeout to prevent hanging (20 seconds to allow Supabase connection)
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 20000)
-      })
-      
-      const result = await Promise.race([
-        authService.signIn(email, password),
-        timeoutPromise
-      ])
+      const result = await authService.signIn(email, password)
       
       if (result.error) {
         throw result.error
@@ -88,6 +67,9 @@ export const useAuth = () => {
       setUser(result.user)
       setSession(result.session)
       setProfile(result.profile)
+      
+      // Manually save session to avoid Supabase library bugs
+      localStorage.setItem('manual_session', JSON.stringify(result));
       
       return { success: true, user: result.user }
     } catch (err) {

@@ -9,51 +9,76 @@ export const authService = {
    * Sign in with email and password - using direct fetch to avoid client issues
    */
   async signIn(email, password) {
+    console.log('AUTH_SERVICE: Starting signIn for', email);
     try {
-      // Check if in simulated mode first
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        return this.demoLogin(email)
+      // Direct fetch to Supabase Auth API
+      console.log('AUTH_SERVICE: Sending fetch request to', `${SUPABASE_URL}/auth/v1/token`);
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      })
+
+      console.log('AUTH_SERVICE: Received response status:', response.status);
+      const data = await response.json()
+      console.log('AUTH_SERVICE: Received data:', data);
+      
+      if (!response.ok) {
+        throw new Error(data.error_description || data.message || 'Invalid login credentials')
       }
 
-      // Use supabase client with longer timeout (15s)
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 15000)
-      )
-      
-      const authPromise = supabase.auth.signInWithPassword({ email, password })
-      const { data, error } = await Promise.race([authPromise, timeoutPromise])
-
-      if (error) throw error
-
       const user = data.user
-      // Attempt to load profile from DB; fall back to email-based heuristic
-      let profile = null
-      try {
-        const profileResult = await this.getUserProfile(user.id)
-        profile = profileResult.data
-      } catch (_) {}
+      
+      // Set the session asynchronously - don't wait for it
+      if (data.access_token && data.refresh_token) {
+        console.log('AUTH_SERVICE: Setting session asynchronously');
+        supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token
+        }).catch(err => console.warn('AUTH_SERVICE: Async session set failed:', err.message));
+      }
 
-      if (!profile) {
-        profile = {
-          id: user.id,
-          email: user.email,
-          // Only treat as admin if email starts with "admin@" or ends with "+admin"
-          role: user.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'student',
-          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
-        }
+      // SKIP PROFILE FETCH FOR NOW TO PREVENT HANGS
+      console.log('AUTH_SERVICE: Login complete, returning data');
+      const profile = {
+        id: user.id,
+        email: user.email,
+        role: user.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'student',
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
+      }
+
+      // Best-effort profile upsert so RLS policies (admin checks) work reliably.
+      // Do not block login if this fails.
+      try {
+        const upsertUrl = `${SUPABASE_URL}/rest/v1/${TABLES.USERS}?on_conflict=id`
+        await fetch(upsertUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${data.access_token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=representation'
+          },
+          body: JSON.stringify(profile),
+          signal: AbortSignal.timeout(3000)
+        })
+      } catch (e) {
+        console.warn('AUTH_SERVICE: profile upsert failed:', e?.message || e)
       }
 
       return {
         success: true,
         user,
-        session: data.session,
+        session: data,
         profile,
         error: null
       }
     } catch (error) {
-      // Log error for debugging
       console.log('Login error:', error.message)
-      // Return error - don't fall back to demo mode in production
       return {
         success: false,
         user: null,

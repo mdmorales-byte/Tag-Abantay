@@ -16,9 +16,17 @@ async function supabaseFetch(table, options = {}) {
     eq = null
   } = options
 
-  // Get user's JWT token from session
-  const { data: { session } } = await supabase.auth.getSession()
-  const userToken = session?.access_token || SUPABASE_ANON_KEY
+  // Get user's JWT token from manual session (since supabase persistence is disabled)
+  let userToken = SUPABASE_ANON_KEY
+  try {
+    const saved = localStorage.getItem('manual_session')
+    if (saved) {
+      const sessionData = JSON.parse(saved)
+      userToken = sessionData?.session?.access_token || sessionData?.access_token || SUPABASE_ANON_KEY
+    }
+  } catch (e) {
+    // Fallback to anon key
+  }
 
   let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`
   
