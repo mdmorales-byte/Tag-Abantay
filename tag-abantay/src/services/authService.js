@@ -125,8 +125,9 @@ export const authService = {
    */
   async signUp(email, password, fullName) {
     try {
-      if (!email.endsWith('@adnu.edu.ph')) {
-        throw new Error('Only AdNU email addresses are allowed (@adnu.edu.ph)')
+      const emailLower = email.toLowerCase();
+      if (!emailLower.endsWith('@adnu.edu.ph') && !emailLower.endsWith('@gbox.adnu.edu.ph')) {
+        throw new Error('Only AdNU email addresses are allowed (@adnu.edu.ph or @gbox.adnu.edu.ph)')
       }
 
       const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {

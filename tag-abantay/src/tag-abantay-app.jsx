@@ -1093,8 +1093,9 @@ function LoginPage({ handleLogin, handleSignUp, handleMagicLink, setCurrentPage 
     
     try {
       if (isMagicLink) {
-        if (!email.endsWith('@adnu.edu.ph')) {
-          setError('Only AdNU emails are allowed (@adnu.edu.ph)');
+        const emailLower = email.toLowerCase();
+        if (!emailLower.endsWith('@adnu.edu.ph') && !emailLower.endsWith('@gbox.adnu.edu.ph')) {
+          setError('Only AdNU emails are allowed (@adnu.edu.ph or @gbox.adnu.edu.ph)');
           setLoading(false);
           return;
         }
