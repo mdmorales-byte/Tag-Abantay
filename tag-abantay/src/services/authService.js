@@ -123,37 +123,42 @@ export const authService = {
   /**
    * Sign up new user (AdNU email only)
    */
-  async signUp(email, password, fullName) {
+  async signUp(email, password, userMetadata) {
     try {
       const emailLower = email.toLowerCase();
       if (!emailLower.endsWith('@adnu.edu.ph') && !emailLower.endsWith('@gbox.adnu.edu.ph')) {
         throw new Error('Only AdNU email addresses are allowed (@adnu.edu.ph or @gbox.adnu.edu.ph)')
       }
 
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ 
-          email, 
-          password,
-          data: { full_name: fullName }
-        })
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: userMetadata,
+          emailRedirectTo: window.location.origin,
+        }
       })
 
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Sign up failed')
+      if (error) throw error
+
+      // If user is created and we have a session (auto-confirm is on)
+      // or even if not, we should attempt to create the profile row
+      if (data?.user) {
+        try {
+          await this.createUserProfile(data.user.id, {
+            email: data.user.email,
+            full_name: userMetadata.full_name || email.split('@')[0],
+            role: email.toLowerCase().startsWith('admin@') ? 'admin' : 'student'
+          });
+        } catch (profileErr) {
+          console.error("Profile creation error:", profileErr);
+        }
       }
 
       return { data, error: null }
     } catch (error) {
-      // Silently handle - expected in demo mode
-      return { data: null, error: null }
+      console.error("SignUp error:", error);
+      return { data: null, error }
     }
   },
 
