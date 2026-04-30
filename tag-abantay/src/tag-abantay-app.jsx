@@ -1070,6 +1070,7 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
   const [fullName, setFullName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -1085,6 +1086,7 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
     
     try {
@@ -1096,8 +1098,12 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
         }
         const result = await handleSignUp(email, password, { full_name: fullName });
         if (result.success) {
-          alert('Check your email for the confirmation link!');
-          setIsSignUp(false);
+          setSuccess('Registration successful! Please check your AdNU email to verify your account.');
+          setFullName('');
+          setEmail('');
+          setPassword('');
+          // After 5 seconds, switch to login
+          setTimeout(() => setIsSignUp(false), 5000);
         } else {
           setError(result.error?.message || 'Sign up failed.');
         }
@@ -1115,46 +1121,61 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-12">
-      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
-        <div className="text-center mb-8">
-          <img src="https://i.imgur.com/SPc6uhg.png" alt="AdNU Logo" className="w-16 h-16 mx-auto mb-4 rounded-full object-cover" />
-          <h1 className="text-3xl font-bold text-white mb-2">
-            {isSignUp ? 'Registration' : 'AdNU Login'}
+    <div className="max-w-md mx-auto px-4 py-8 md:py-12 animate-fadeIn">
+      <div className="bg-slate-800/40 backdrop-blur-md rounded-3xl p-6 md:p-10 border border-white/10 shadow-2xl">
+        <div className="text-center mb-10">
+          <div className="relative inline-block mb-4">
+            <div className="absolute inset-0 bg-cyan-500 blur-2xl opacity-20 rounded-full animate-pulse"></div>
+            <img src="https://i.imgur.com/SPc6uhg.png" alt="AdNU Logo" className="relative w-20 h-20 mx-auto rounded-full object-cover border-2 border-white/10" />
+          </div>
+          <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">
+            {isSignUp ? 'Join Tag-Abantay' : 'Welcome Back'}
           </h1>
-          <p className="text-gray-400">
+          <p className="text-slate-400 font-medium">
             {isSignUp 
-              ? 'Students, Staff & Faculty Registration' 
-              : 'Sign in with your institutional account'}
+              ? 'Safety Registration for AdNU' 
+              : 'Sign in to your safety portal'}
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-slate-900 rounded-lg p-1 mb-8">
+        <div className="flex bg-slate-900/50 backdrop-blur-sm rounded-2xl p-1.5 mb-8 border border-white/5">
           <button
-            onClick={() => setIsSignUp(false)}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isSignUp ? 'bg-cyan-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => { setIsSignUp(false); setError(''); setSuccess(''); }}
+            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${!isSignUp ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Sign In
           </button>
           <button
-            onClick={() => setIsSignUp(true)}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isSignUp ? 'bg-cyan-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => { setIsSignUp(true); setError(''); setSuccess(''); }}
+            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${isSignUp ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Register
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-6">
+        <form onSubmit={onSubmit} className="space-y-5">
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 animate-shake">
-              <p className="text-red-400 text-sm">{error}</p>
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 animate-shake">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+                <p className="text-red-400 text-sm font-medium">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {success && (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 animate-fadeIn">
+              <div className="flex items-center space-x-3">
+                <Shield className="w-5 h-5 text-green-500 shrink-0" />
+                <p className="text-green-400 text-sm font-medium">{success}</p>
+              </div>
             </div>
           )}
           
           {isSignUp && (
-            <div className="animate-fadeIn">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+            <div className="animate-slideDown">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
                 Full Name
               </label>
               <input
@@ -1162,29 +1183,29 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Juan D. Dela Cruz"
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
                 required={isSignUp}
               />
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Email Address
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
+              AdNU Email Address
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your.name@adnu.edu.ph"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              placeholder="name@adnu.edu.ph"
+              className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Password
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
+              Secure Password
             </label>
             <div className="relative">
               <input
@@ -1192,13 +1213,13 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 pr-12 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
               >
                 {showPassword ? (
                   <EyeOff className="w-5 h-5" />
@@ -1208,8 +1229,8 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
               </button>
             </div>
             {isSignUp && (
-              <p className="mt-2 text-xs text-gray-500">
-                Password must be at least 6 characters.
+              <p className="mt-2 text-[10px] text-slate-500 font-medium ml-1">
+                MUST BE AT LEAST 6 CHARACTERS
               </p>
             )}
           </div>
@@ -1217,18 +1238,25 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-6 py-3 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-cyan-500/30"
+            className="w-full px-6 py-4 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 disabled:opacity-50 text-white font-bold rounded-2xl transition-all duration-300 shadow-xl shadow-cyan-500/20 active:scale-95"
           >
-            {loading ? (isSignUp ? 'Creating Account...' : 'Signing In...') : (isSignUp ? 'Create Account' : 'Sign In')}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Processing...
+              </span>
+            ) : (
+              isSignUp ? 'Create My Account' : 'Sign Into Portal'
+            )}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-10 text-center">
           <button
             onClick={() => setCurrentPage('home')}
-            className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+            className="text-xs font-bold text-slate-500 hover:text-cyan-400 uppercase tracking-widest transition-colors"
           >
-            Back to Home
+            ← Back to Home
           </button>
         </div>
       </div>
