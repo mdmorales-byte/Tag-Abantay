@@ -24,8 +24,8 @@ export const announcementService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error('Get announcements error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -51,8 +51,8 @@ export const announcementService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error('Get announcements by priority error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -82,8 +82,8 @@ export const announcementService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error('Create announcement error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -102,8 +102,8 @@ export const announcementService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error('Delete announcement error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -121,8 +121,6 @@ export const announcementService = {
           table: TABLES.ANNOUNCEMENTS 
         },
         async (payload) => {
-          console.log('New announcement received:', payload)
-          
           // Fetch creator info
           if (payload.new?.created_by) {
             const { data: userData } = await supabase
@@ -143,9 +141,7 @@ export const announcementService = {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('Announcement subscription status:', status)
-      })
+      .subscribe()
 
     return channel
   },

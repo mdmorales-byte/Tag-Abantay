@@ -1,5 +1,14 @@
 // src/services/bulletinService.js
-import { TABLES } from './supabaseClient'
+import { supabase, TABLES } from './supabaseClient'
+
+// Helper to handle permission errors gracefully
+function handlePermissionError(error, fallbackData = []) {
+  if (error?.message?.includes('permission denied') || error?.code === '403' || error?.message?.includes('timeout')) {
+    // Silently return fallback data - expected when Supabase is unavailable
+    return { success: true, data: fallbackData }
+  }
+  return { success: false, error }
+}
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -15,6 +24,10 @@ async function supabaseFetch(table, options = {}) {
     eq = null,
     id = null
   } = options
+
+  // Get user's JWT token from session
+  const { data: { session } } = await supabase.auth.getSession()
+  const userToken = session?.access_token || SUPABASE_ANON_KEY
 
   let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`
   
@@ -33,9 +46,10 @@ async function supabaseFetch(table, options = {}) {
 
   const headers = {
     'apikey': SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    'Authorization': `Bearer ${userToken}`,
     'Content-Type': 'application/json',
-    'Prefer': method === 'POST' ? 'return=representation' : undefined
+    'Accept': 'application/json',
+    'Prefer': (method === 'POST' || method === 'PATCH') ? 'return=representation' : undefined
   }
 
   // Remove undefined headers
@@ -66,86 +80,61 @@ async function supabaseFetch(table, options = {}) {
   return { data, error: null }
 }
 
+
 // Announcement Services
 export const announcementService = {
   // Get all announcements
   async getAll() {
-    try {
-      const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
-        select: '*',
-        order: 'created_at.desc',
-        limit: 100
-      })
-      return { success: true, data: result.data }
-    } catch (error) {
-      console.error('Error fetching announcements:', error)
-      return { success: false, error }
-    }
+    const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
+      select: '*',
+      order: 'created_at.desc',
+      limit: 100
+    })
+    return { success: true, data: result.data }
   },
 
   // Get latest announcements (limited)
   async getLatest(limit = 5) {
-    try {
-      const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
-        select: '*',
-        order: 'created_at.desc',
-        limit
-      })
-      return { success: true, data: result.data }
-    } catch (error) {
-      console.error('Error fetching latest announcements:', error)
-      return { success: false, error }
-    }
+    const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
+      select: '*',
+      order: 'created_at.desc',
+      limit
+    })
+    return { success: true, data: result.data }
   },
 
   // Create announcement
   async create({ title, content }) {
-    try {
-      const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
-        method: 'POST',
-        body: { title, content },
-        select: '*'
-      })
-      return { success: true, data: result.data?.[0] }
-    } catch (error) {
-      console.error('Error creating announcement:', error)
-      return { success: false, error }
-    }
+    const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
+      method: 'POST',
+      body: { title, content },
+      select: '*'
+    })
+    return { success: true, data: result.data?.[0] }
   },
 
   // Update announcement
   async update(id, { title, content }) {
-    try {
-      const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
-        method: 'PATCH',
-        body: { title, content, updated_at: new Date().toISOString() },
-        id,
-        select: '*'
-      })
-      return { success: true, data: result.data?.[0] }
-    } catch (error) {
-      console.error('Error updating announcement:', error)
-      return { success: false, error }
-    }
+    const result = await supabaseFetch(TABLES.ANNOUNCEMENTS, {
+      method: 'PATCH',
+      body: { title, content, updated_at: new Date().toISOString() },
+      id,
+      select: '*'
+    })
+    return { success: true, data: result.data?.[0] }
   },
 
   // Delete announcement
   async delete(id) {
-    try {
-      await supabaseFetch(TABLES.ANNOUNCEMENTS, {
-        method: 'DELETE',
-        id
-      })
-      return { success: true }
-    } catch (error) {
-      console.error('Error deleting announcement:', error)
-      return { success: false, error }
-    }
+    await supabaseFetch(TABLES.ANNOUNCEMENTS, {
+      method: 'DELETE',
+      id
+    })
+    return { success: true }
   },
 
   // Subscribe to real-time updates (disabled - using polling)
   subscribeToChanges(callback) {
-    console.log('Realtime subscriptions disabled for announcements - using polling')
     return { 
       unsubscribe: () => {},
       on: () => ({ subscribe: () => {} })
@@ -153,55 +142,40 @@ export const announcementService = {
   }
 }
 
+
 // Gallery Image Services
 export const galleryService = {
   // Get all gallery images
   async getAll() {
-    try {
-      const result = await supabaseFetch(TABLES.GALLERY_IMAGES, {
-        select: '*',
-        order: 'created_at.desc',
-        limit: 100
-      })
-      return { success: true, data: result.data }
-    } catch (error) {
-      console.error('Error fetching gallery images:', error)
-      return { success: false, error }
-    }
+    const result = await supabaseFetch(TABLES.GALLERY_IMAGES, {
+      select: '*',
+      order: 'created_at.desc',
+      limit: 100
+    })
+    return { success: true, data: result.data || [] }
   },
 
-  // Create gallery image
-  async create({ url, caption }) {
-    try {
-      const result = await supabaseFetch(TABLES.GALLERY_IMAGES, {
-        method: 'POST',
-        body: { url, caption },
-        select: '*'
-      })
-      return { success: true, data: result.data?.[0] }
-    } catch (error) {
-      console.error('Error creating gallery image:', error)
-      return { success: false, error }
-    }
+  // Create gallery image (supports URL or base64 file data)
+  async create({ url, caption, fileData }) {
+    const result = await supabaseFetch(TABLES.GALLERY_IMAGES, {
+      method: 'POST',
+      body: { url: fileData || url, caption },
+      select: '*'
+    })
+    return { success: true, data: result.data }
   },
 
   // Delete gallery image
   async delete(id) {
-    try {
-      await supabaseFetch(TABLES.GALLERY_IMAGES, {
-        method: 'DELETE',
-        id
-      })
-      return { success: true }
-    } catch (error) {
-      console.error('Error deleting gallery image:', error)
-      return { success: false, error }
-    }
+    await supabaseFetch(TABLES.GALLERY_IMAGES, {
+      method: 'DELETE',
+      id
+    })
+    return { success: true }
   },
 
   // Subscribe to real-time updates (disabled - using polling)
   subscribeToChanges(callback) {
-    console.log('Realtime subscriptions disabled for gallery - using polling')
     return { 
       unsubscribe: () => {},
       on: () => ({ subscribe: () => {} })

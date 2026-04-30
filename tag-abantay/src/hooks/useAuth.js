@@ -15,19 +15,12 @@ export const useAuth = () => {
 
     // Safety timeout - force loading to false after 3 seconds
     const timeoutId = setTimeout(() => {
-      setLoading(current => {
-        if (current) {
-          console.log('Forcing loading to false after timeout')
-          return false
-        }
-        return current
-      })
+      setLoading(current => current ? false : current)
     }, 3000)
 
     // Listen for auth changes
     const { data: authListener } = authService.onAuthStateChange(
       async (event, session, profile) => {
-        console.log('Auth state changed:', event)
         setSession(session)
         setUser(session?.user || null)
         setProfile(profile)
@@ -43,10 +36,7 @@ export const useAuth = () => {
 
   const checkSession = async () => {
     // Safety timeout - ensure loading is always set to false
-    const timeoutId = setTimeout(() => {
-      console.log('checkSession timeout - forcing loading false')
-      setLoading(false)
-    }, 4000)
+    const timeoutId = setTimeout(() => setLoading(false), 4000)
     
     try {
       const { session } = await authService.getSession()
@@ -58,8 +48,7 @@ export const useAuth = () => {
           const { data: profile } = await authService.getUserProfile(session.user.id)
           setProfile(profile)
         } catch (profileErr) {
-          console.warn('Profile fetch failed, using default:', profileErr)
-          // Set a default profile so loading completes
+          // Profile fetch failed - use default
           setProfile({
             id: session.user.id,
             email: session.user.email,
@@ -69,7 +58,7 @@ export const useAuth = () => {
         }
       }
     } catch (err) {
-      console.error('Session check error:', err)
+      // Silently handle session check errors
       setError(err)
     } finally {
       clearTimeout(timeoutId)
@@ -82,9 +71,9 @@ export const useAuth = () => {
       setLoading(true)
       setError(null)
       
-      // Add timeout to prevent hanging
+      // Add timeout to prevent hanging (20 seconds to allow Supabase connection)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 10000)
+        setTimeout(() => reject(new Error('Login request timed out. Please try again.')), 20000)
       })
       
       const result = await Promise.race([

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Shield, MapPin, Users, Bell, CloudRain, X, Menu, ChevronRight, Home, Send, Eye, Info } from 'lucide-react';
+import { AlertTriangle, Shield, MapPin, Users, Bell, CloudRain, X, Menu, ChevronRight, Home, Send, Eye, EyeOff, Info } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import { supabase } from './services/supabaseClient';
 import { useAuth } from './hooks/useAuth';
 import { useAlerts } from './hooks/useAlerts';
@@ -7,6 +10,8 @@ import { useCheckIns } from './hooks/useCheckIns';
 import { notificationService } from './services/notificationService';
 import { announcementService, galleryService } from './services/bulletinService';
 import { checkInService } from './services/checkInService';
+import { alertService } from './services/alertService';
+import { evacuationService } from './services/evacuationService';
 
 // Alert levels configuration
 const ALERT_LEVELS = {
@@ -26,7 +31,7 @@ export default function TagAbantayApp() {
   // Use custom hooks
   const { user, isAuthenticated, isAdmin, signIn, signOut, loading: authLoading } = useAuth();
   const { currentAlert, alertInfo, isActive } = useAlerts();
-  const { safetyStats, submitCheckIn, reloadStats } = useCheckIns();
+  const { safetyStats, submitCheckIn, reloadStats } = useCheckIns(user?.id);
 
   // Initialize notifications on mount
   useEffect(() => {
@@ -106,9 +111,9 @@ export default function TagAbantayApp() {
         {currentPage === 'dashboard' && isAuthenticated && (
           isAdmin ? 
             <AdminDashboard safetyStats={safetyStats} /> : 
-            <StudentDashboard safetyStats={safetyStats} />
+            <StudentDashboard safetyStats={safetyStats} setCurrentPage={setCurrentPage} />
         )}
-        {currentPage === 'checkin' && isAuthenticated && <CheckInPage submitCheckIn={submitCheckIn} />}
+        {currentPage === 'checkin' && isAuthenticated && <CheckInPage submitCheckIn={submitCheckIn} user={user} />}
         {currentPage === 'about' && <AboutUsPage />}
       </main>
     </div>
@@ -279,13 +284,13 @@ function HomePage({ setCurrentPage, typhoonAlert }) {
   useEffect(() => {
     loadAnnouncements();
     
-    // Subscribe to real-time updates
-    const subscription = announcementService.subscribeToChanges(() => {
+    // Poll every 5 seconds for updates (realtime disabled)
+    const pollInterval = setInterval(() => {
       loadAnnouncements();
-    });
+    }, 5000);
     
     return () => {
-      subscription.unsubscribe();
+      clearInterval(pollInterval);
     };
   }, []);
 
@@ -461,7 +466,10 @@ function BulletinGallery() {
   const loadImages = async () => {
     const result = await galleryService.getAll();
     if (result.success) {
-      setImages(result.data || []);
+      const newImages = result.data || [];
+      setImages(newImages);
+      // Reset to 0 to prevent out-of-bounds crash when image list changes
+      setCurrentIndex(0);
     }
     setLoading(false);
   };
@@ -616,50 +624,372 @@ function SafetyGuideline({ children }) {
   );
 }
 
+// Map Controller Component to handle programmatic map control
+function MapController({ focusTrigger }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (focusTrigger) {
+      map.setView(CAMPUS_LOCATION, 16, {
+        animate: true,
+        duration: 1
+      });
+    }
+  }, [focusTrigger, map]);
+  
+  return null;
+}
+
+// Map Click Handler Component
+function MapClickHandler({ onClick }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    const handleClick = (e) => {
+      onClick(e.latlng.lat, e.latlng.lng);
+    };
+    
+    map.on('click', handleClick);
+    
+    return () => {
+      map.off('click', handleClick);
+    };
+  }, [map, onClick]);
+  
+  return null;
+}
+
+// Calculate distance between two coordinates (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of Earth in kilometers
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return distance;
+}
+
+function toRad(degrees) {
+  return degrees * (Math.PI / 180);
+}
+
+// Fix Leaflet default marker icon
+const campusIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const evacuationIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const warningIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// AdNU Campus coordinates (Ateneo de Naga University)
+const CAMPUS_LOCATION = [13.630375791402535, 123.18515636738462];
+
+// Load warning zones from localStorage
+const getWarningZones = () => {
+  const stored = localStorage.getItem('tag-abantay-warning-zones');
+  return stored ? JSON.parse(stored) : [];
+};
+
+const saveWarningZones = (zones) => {
+  localStorage.setItem('tag-abantay-warning-zones', JSON.stringify(zones));
+};
+
 // Evacuation Map Page
 function EvacuationMapPage() {
+  const [routes, setRoutes] = useState([]);
+  const [warningZones, setWarningZones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [focusTrigger, setFocusTrigger] = useState(0);
+
+  useEffect(() => {
+    loadRoutes();
+    loadWarningZones();
+    
+    // Poll every 3 seconds to detect changes
+    const interval = setInterval(() => {
+      loadRoutes();
+      loadWarningZones();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadRoutes = async () => {
+    const result = await evacuationService.getEvacuationRoutes();
+    if (result.data) {
+      setRoutes(result.data);
+    }
+    setLoading(false);
+  };
+
+  const loadWarningZones = () => {
+    const zones = getWarningZones();
+    setWarningZones(zones);
+  };
+
+  // Generate coordinates for evacuation routes
+  const getRouteCoordinates = (route, index) => {
+    // If route has saved latitude/longitude from admin map picker, use those
+    if (route.latitude && route.longitude) {
+      return [route.latitude, route.longitude];
+    }
+    
+    // If route has geojson coordinates, use those
+    if (route.geojson?.coordinates) {
+      return route.geojson.coordinates;
+    }
+    
+    // Fallback: calculate based on distance
+    const distanceKm = parseFloat(route.distance_from_campus_km) || 1;
+    const angle = (index * 60) * (Math.PI / 180); // Spread routes in different directions
+    const distanceDeg = distanceKm / 111; // Rough conversion: 1 degree ≈ 111 km
+    
+    const lat = CAMPUS_LOCATION[0] + Math.sin(angle) * distanceDeg;
+    const lng = CAMPUS_LOCATION[1] + Math.cos(angle) * distanceDeg;
+    return [lat, lng];
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <h1 className="text-4xl font-bold text-white mb-8">Evacuation Map</h1>
 
-      {/* Map Placeholder */}
-      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50 mb-8">
-        <div className="bg-gradient-to-br from-green-900 to-emerald-900 rounded-xl h-96 flex items-center justify-center">
-          <div className="text-center">
-            <MapPin className="w-16 h-16 text-green-400 mx-auto mb-4" />
-            <p className="text-white text-lg">Interactive Map Component</p>
-            <p className="text-gray-400 text-sm mt-2">OpenStreetMap + Leaflet.js Integration</p>
+      {/* Map Controls */}
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-gray-400 text-sm">Click markers to view details. Use mouse wheel to zoom.</p>
+        <button
+          onClick={() => setFocusTrigger(prev => prev + 1)}
+          className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-white rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+        >
+          <MapPin className="w-4 h-4" />
+          Focus on Campus
+        </button>
+      </div>
+
+      {/* Interactive Map */}
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-4 border border-slate-700/50 mb-8">
+        <div className="rounded-xl overflow-hidden" style={{ height: '500px' }}>
+          <MapContainer
+            center={CAMPUS_LOCATION}
+            zoom={16}
+            style={{ height: '100%', width: '100%' }}
+            scrollWheelZoom={true}
+          >
+            <MapController focusTrigger={focusTrigger} />
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            
+            {/* Campus Marker with pulsing effect */}
+            <Marker position={CAMPUS_LOCATION} icon={campusIcon}>
+              <Popup>
+                <div className="text-center p-2">
+                  <strong className="text-lg text-red-600 block mb-1">Ateneo de Naga University</strong>
+                  <p className="text-sm text-gray-600">Main Campus</p>
+                  <p className="text-xs text-gray-500 mt-1">Naga City, Camarines Sur</p>
+                  <p className="text-xs text-gray-400 mt-2">📍 Central Evacuation Point</p>
+                </div>
+              </Popup>
+            </Marker>
+            
+            {/* Campus Radius Circle (2km radius) */}
+            <Circle
+              center={CAMPUS_LOCATION}
+              radius={2000}
+              pathOptions={{
+                color: '#ef4444',
+                fillColor: '#ef4444',
+                fillOpacity: 0.1,
+                weight: 2
+              }}
+            />
+            
+            {/* Evacuation Route Markers */}
+            {routes.map((route, index) => {
+              const coords = getRouteCoordinates(route, index);
+              return (
+                <Marker 
+                  key={route.id} 
+                  position={coords} 
+                  icon={evacuationIcon}
+                  eventHandlers={{
+                    click: () => setSelectedRoute(route)
+                  }}
+                >
+                  <Popup>
+                    <div className="p-2">
+                      <h3 className="font-bold text-lg mb-1">{route.name}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{route.description}</p>
+                      <div className="space-y-1 text-sm">
+                        <p><strong>Capacity:</strong> {route.capacity} persons</p>
+                        <p><strong>Distance:</strong> {parseFloat(route.distance_from_campus_km || 0).toFixed(1)} km from campus</p>
+                        <p><strong>Status:</strong> <span className="text-green-600 font-semibold">Available</span></p>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+            
+            {/* Polylines connecting campus to evacuation routes */}
+            {routes.map((route, index) => {
+              const coords = getRouteCoordinates(route, index);
+              return (
+                <Polyline
+                  key={route.id}
+                  positions={[CAMPUS_LOCATION, coords]}
+                  pathOptions={{
+                    color: '#10b981',
+                    weight: 3,
+                    opacity: 0.6,
+                    dashArray: '10, 10'
+                  }}
+                />
+              );
+            })}
+            
+            {/* Warning Zones - Areas to Avoid */}
+            {warningZones.map((zone) => (
+              <React.Fragment key={zone.id}>
+                {/* Warning Zone Circle */}
+                <Circle
+                  center={[zone.latitude, zone.longitude]}
+                  radius={zone.radius_meters || 50}
+                  pathOptions={{
+                    color: '#f97316',
+                    fillColor: '#f97316',
+                    fillOpacity: 0.3,
+                    weight: 2
+                  }}
+                />
+                {/* Warning Marker */}
+                <Marker 
+                  position={[zone.latitude, zone.longitude]} 
+                  icon={warningIcon}
+                >
+                  <Popup>
+                    <div className="p-2 max-w-xs">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center text-white text-sm">⚠️</div>
+                        <h3 className="font-bold text-orange-600">{zone.name}</h3>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">{zone.description}</p>
+                      <div className="bg-orange-100 border border-orange-300 rounded p-2">
+                        <p className="text-xs text-orange-700 font-semibold">⚠️ DANGER ZONE - AVOID THIS AREA</p>
+                        <p className="text-xs text-gray-600 mt-1">Radius: {zone.radius_meters || 50} meters</p>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              </React.Fragment>
+            ))}
+          </MapContainer>
+        </div>
+        
+        {/* Map Legend */}
+        <div className="flex flex-wrap gap-4 mt-4 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-red-500"></div>
+            <span className="text-gray-300">AdNU Campus</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-green-500"></div>
+            <span className="text-gray-300">Evacuation Center</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-orange-500"></div>
+            <span className="text-gray-300">⚠️ Avoid Area</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-0.5 border-t-2 border-dashed border-green-500"></div>
+            <span className="text-gray-300">Evacuation Route</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full border-2 border-red-500 bg-red-500/10"></div>
+            <span className="text-gray-300">2km Safety Radius</span>
           </div>
         </div>
       </div>
 
-      {/* Evacuation Centers */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <EvacuationCenter
-          name="AdNU Gym"
-          capacity="500 persons"
-          distance="0.2 km"
-          status="Available"
-        />
-        <EvacuationCenter
-          name="Naga City Coliseum"
-          capacity="1,000 persons"
-          distance="1.5 km"
-          status="Available"
-        />
-        <EvacuationCenter
-          name="Barangay Hall - Concepcion Grande"
-          capacity="200 persons"
-          distance="2.1 km"
-          status="Available"
-        />
-        <EvacuationCenter
-          name="SM City Naga"
-          capacity="800 persons"
-          distance="3.2 km"
-          status="Available"
-        />
-      </div>
+      {/* Warning Zones Section */}
+      <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="text-orange-500">⚠️</span> Areas to Avoid
+      </h2>
+      {warningZones.length === 0 ? (
+        <div className="text-gray-400 mb-8">No warning zones. Admin can add danger areas from the Dashboard.</div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6 mb-12">
+          {warningZones.map((zone) => (
+            <div key={zone.id} className="bg-slate-800/50 rounded-2xl p-6 border border-orange-500/30">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center">
+                  <span className="text-orange-400 text-lg">⚠️</span>
+                </div>
+                <div>
+                  <h3 className="text-white font-semibold">{zone.name}</h3>
+                  <p className="text-xs text-orange-400 font-semibold">⚠️ DANGER ZONE - AVOID</p>
+                </div>
+              </div>
+              <p className="text-gray-400 text-sm mb-3">{zone.description}</p>
+              <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Radius: {zone.radius_meters || 50}m
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Evacuation Centers List */}
+      <h2 className="text-2xl font-bold text-white mb-4">Evacuation Centers</h2>
+      {loading ? (
+        <div className="text-white">Loading evacuation routes...</div>
+      ) : routes.length === 0 ? (
+        <div className="text-gray-400">No evacuation routes available. Add routes in the Admin Dashboard.</div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {routes.map((route) => (
+            <EvacuationCenter
+              key={route.id}
+              name={route.name}
+              capacity={`${route.capacity} persons`}
+              distance={`${route.distance_from_campus_km} km`}
+              status="Available"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -690,6 +1020,7 @@ function LoginPage({ handleLogin, setCurrentPage }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -746,14 +1077,27 @@ function LoginPage({ handleLogin, setCurrentPage }) {
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 pr-12 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
           </div>
 
           <button
@@ -778,26 +1122,35 @@ function LoginPage({ handleLogin, setCurrentPage }) {
   );
 }
 
-function StudentDashboard({ safetyStats }) {
+function StudentDashboard({ safetyStats, setCurrentPage }) {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordSet, setPasswordSet] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [updating, setUpdating] = useState(false);
   const { updatePassword } = useAuth();
 
   const handleSetPassword = async (e) => {
     e.preventDefault();
+    setPasswordError('');
     if (newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
       return;
     }
     setUpdating(true);
     const result = await updatePassword(newPassword);
     if (result.success) {
-      alert('Password set successfully! You can now log in with email and password.');
+      setPasswordSet(true);
       setShowPasswordForm(false);
       setNewPassword('');
+      setConfirmPassword('');
     } else {
-      alert('Failed to set password: ' + result.error?.message);
+      setPasswordError('Failed to set password: ' + (result.error?.message || 'Unknown error'));
     }
     setUpdating(false);
   };
@@ -806,13 +1159,13 @@ function StudentDashboard({ safetyStats }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <h1 className="text-4xl font-bold text-white mb-8">Student Dashboard</h1>
 
-      {/* Set Password Banner */}
-      {!showPasswordForm && (
+      {/* Set Password Banner - only shown if not yet set */}
+      {!passwordSet && !showPasswordForm && (
         <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-yellow-400 font-semibold">No Password Set</p>
-              <p className="text-gray-300 text-sm">Set a password so you can log in without magic link</p>
+              <p className="text-yellow-400 font-semibold">Set a Password</p>
+              <p className="text-gray-300 text-sm">Set a password so you can log in without a magic link</p>
             </div>
             <button
               onClick={() => setShowPasswordForm(true)}
@@ -824,14 +1177,25 @@ function StudentDashboard({ safetyStats }) {
         </div>
       )}
 
+      {/* Password Set Success Banner */}
+      {passwordSet && (
+        <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4 mb-6">
+          <p className="text-green-400 font-semibold">✓ Password set successfully! You can now log in with email and password.</p>
+        </div>
+      )}
+
       {/* Password Form */}
       {showPasswordForm && (
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 mb-6">
-          <form onSubmit={handleSetPassword} className="flex items-end gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                New Password (min 6 characters)
-              </label>
+          <h3 className="text-lg font-semibold text-white mb-4">Set Your Password</h3>
+          {passwordError && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+              <p className="text-red-400 text-sm">{passwordError}</p>
+            </div>
+          )}
+          <form onSubmit={handleSetPassword} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">New Password (min 6 characters)</label>
               <input
                 type="password"
                 value={newPassword}
@@ -842,20 +1206,34 @@ function StudentDashboard({ safetyStats }) {
                 minLength={6}
               />
             </div>
-            <button
-              type="submit"
-              disabled={updating}
-              className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
-            >
-              {updating ? 'Saving...' : 'Save Password'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowPasswordForm(false)}
-              className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all"
-            >
-              Cancel
-            </button>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+                required
+                minLength={6}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={updating}
+                className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+              >
+                {updating ? 'Saving...' : 'Save Password'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPasswordForm(false); setPasswordError(''); }}
+                className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -872,10 +1250,10 @@ function StudentDashboard({ safetyStats }) {
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50 mb-8">
         <h2 className="text-2xl font-bold text-white mb-6">Quick Actions</h2>
         <div className="grid md:grid-cols-2 gap-4">
-          <QuickActionButton icon={Shield}>Submit Check-In</QuickActionButton>
-          <QuickActionButton icon={Send}>Report Incident</QuickActionButton>
-          <QuickActionButton icon={MapPin}>View Evacuation Routes</QuickActionButton>
-          <QuickActionButton icon={Bell}>View Alerts</QuickActionButton>
+          <QuickActionButton icon={Shield} onClick={() => setCurrentPage('checkin')}>Submit Check-In</QuickActionButton>
+          <QuickActionButton icon={MapPin} onClick={() => setCurrentPage('map')}>View Evacuation Routes</QuickActionButton>
+          <QuickActionButton icon={Bell} onClick={() => setCurrentPage('alerts')}>View Alerts</QuickActionButton>
+          <QuickActionButton icon={Send} onClick={() => setCurrentPage('checkin')}>Report Incident</QuickActionButton>
         </div>
       </div>
 
@@ -907,9 +1285,12 @@ function StatCard({ title, value, color, icon: Icon, onClick, isSelected }) {
   );
 }
 
-function QuickActionButton({ icon: Icon, children }) {
+function QuickActionButton({ icon: Icon, children, onClick }) {
   return (
-    <button className="flex items-center space-x-3 px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-200">
+    <button
+      onClick={onClick}
+      className="flex items-center space-x-3 px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-200"
+    >
       <Icon className="w-5 h-5" />
       <span className="font-medium">{children}</span>
     </button>
@@ -917,30 +1298,33 @@ function QuickActionButton({ icon: Icon, children }) {
 }
 
 // Check-In Page
-function CheckInPage({ submitCheckIn }) {
+function CheckInPage({ submitCheckIn, user }) {
   const [status, setStatus] = useState('safe');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState(null); // { type: 'success'|'error', message }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setFeedback(null);
     
     const result = await submitCheckIn({
+      userId: user?.id,
       status,
       location,
       notes
     });
     
     if (result.success) {
-      alert('Check-in submitted successfully!');
+      setFeedback({ type: 'success', message: 'Check-in submitted successfully!' });
       // Reset form
       setStatus('safe');
       setLocation('');
       setNotes('');
     } else {
-      alert('Failed to submit check-in. Please try again.');
+      setFeedback({ type: 'error', message: result.error?.message || 'Failed to submit check-in. Please try again.' });
     }
     
     setSubmitting(false);
@@ -951,6 +1335,11 @@ function CheckInPage({ submitCheckIn }) {
       <h1 className="text-4xl font-bold text-white mb-8">Safety Check-In</h1>
 
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
+        {feedback && (
+          <div className={`mb-6 rounded-lg p-4 ${feedback.type === 'success' ? 'bg-green-500/20 border border-green-500/50' : 'bg-red-500/20 border border-red-500/50'}`}>
+            <p className={`text-sm font-medium ${feedback.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-lg font-medium text-white mb-4">
@@ -1006,9 +1395,10 @@ function CheckInPage({ submitCheckIn }) {
 
           <button
             type="submit"
-            className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-cyan-500/30"
+            disabled={submitting}
+            className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-cyan-500/30"
           >
-            Submit Check-In
+            {submitting ? 'Submitting...' : 'Submit Check-In'}
           </button>
         </form>
       </div>
@@ -1062,7 +1452,7 @@ function AdminDashboard({ safetyStats: initialStats }) {
     try {
       subscription = checkInService.subscribeToCheckIns((payload) => {
         console.log('New check-in:', payload);
-        loadCheckIns();
+        loadCheckIns(false); // don't show loading spinner on real-time refresh
         loadSafetyStats();
       });
     } catch (err) {
@@ -1081,8 +1471,8 @@ function AdminDashboard({ safetyStats: initialStats }) {
     };
   }, []);
 
-  const loadCheckIns = async () => {
-    setLoading(true);
+  const loadCheckIns = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const result = await checkInService.getAllCheckIns(50);
       if (result.data) {
@@ -1100,10 +1490,10 @@ function AdminDashboard({ safetyStats: initialStats }) {
       const result = await checkInService.getSafetyStats();
       if (result.data) {
         setSafetyStats({
-          safe: result.data.safe,
-          needsHelp: result.data.need_help,
-          unreachable: result.data.unreachable,
-          notReported: result.data.not_reported
+          safe: result.data.safe || 0,
+          needsHelp: result.data.need_help || 0,
+          unreachable: result.data.unreachable || 0,
+          notReported: result.data.not_reported || 0
         });
       }
     } catch (err) {
@@ -1177,12 +1567,18 @@ function AdminDashboard({ safetyStats: initialStats }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-2 mb-8 bg-slate-800/50 p-2 rounded-xl">
+      <div className="flex space-x-2 mb-8 bg-slate-800/50 p-2 rounded-xl flex-wrap">
         <AdminTab active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} icon={Shield}>
           Overview
         </AdminTab>
+        <AdminTab active={activeTab === 'alerts'} onClick={() => setActiveTab('alerts')} icon={AlertTriangle}>
+          Alerts
+        </AdminTab>
         <AdminTab active={activeTab === 'announcements'} onClick={() => setActiveTab('announcements')} icon={Bell}>
           Announcements
+        </AdminTab>
+        <AdminTab active={activeTab === 'maps'} onClick={() => setActiveTab('maps')} icon={MapPin}>
+          Evacuation
         </AdminTab>
         <AdminTab active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')} icon={Eye}>
           Gallery
@@ -1318,7 +1714,9 @@ function AdminDashboard({ safetyStats: initialStats }) {
         </>
       )}
 
+      {activeTab === 'alerts' && <AdminAlerts />}
       {activeTab === 'announcements' && <AdminAnnouncements />}
+      {activeTab === 'maps' && <AdminEvacuation />}
       {activeTab === 'gallery' && <AdminGallery />}
     </div>
   );
@@ -1343,21 +1741,23 @@ function AdminTab({ active, onClick, icon: Icon, children }) {
 function AdminAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ title: '', content: '' });
+  const [formError, setFormError] = useState('');
 
   // Fetch announcements on mount
   useEffect(() => {
     loadAnnouncements();
     
-    // Subscribe to real-time updates
-    const subscription = announcementService.subscribeToChanges(() => {
+    // Poll every 5 seconds for updates (realtime disabled)
+    const pollInterval = setInterval(() => {
       loadAnnouncements();
-    });
+    }, 5000);
     
     return () => {
-      subscription.unsubscribe();
+      clearInterval(pollInterval);
     };
   }, []);
 
@@ -1373,12 +1773,14 @@ function AdminAnnouncements() {
     setIsEditing(true);
     setEditingId(null);
     setFormData({ title: '', content: '' });
+    setFormError('');
   };
 
   const handleEdit = (announcement) => {
     setIsEditing(true);
     setEditingId(announcement.id);
     setFormData({ title: announcement.title, content: announcement.content });
+    setFormError('');
   };
 
   const handleDelete = async (id) => {
@@ -1386,31 +1788,43 @@ function AdminAnnouncements() {
     
     const result = await announcementService.delete(id);
     if (result.success) {
-      setAnnouncements(announcements.filter(a => a.id !== id));
+      setAnnouncements(prev => prev.filter(a => a.id !== id));
     } else {
-      alert('Failed to delete announcement');
+      alert('Failed to delete announcement: ' + (result.error?.message || 'Unknown error'));
     }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setSaving(true);
+    setFormError('');
     
     if (editingId) {
       const result = await announcementService.update(editingId, formData);
       if (result.success) {
-        setAnnouncements(announcements.map(a => 
-          a.id === editingId ? { ...a, ...formData, updated_at: new Date().toISOString() } : a
+        // Use returned data if available, else merge locally
+        setAnnouncements(prev => prev.map(a => 
+          a.id === editingId 
+            ? (result.data || { ...a, ...formData, updated_at: new Date().toISOString() })
+            : a
         ));
+        setIsEditing(false);
+        setFormData({ title: '', content: '' });
+      } else {
+        setFormError('Failed to save: ' + (result.error?.message || 'Unknown error'));
       }
     } else {
       const result = await announcementService.create(formData);
       if (result.success && result.data) {
-        setAnnouncements([result.data, ...announcements]);
+        setAnnouncements(prev => [result.data, ...prev]);
+        setIsEditing(false);
+        setFormData({ title: '', content: '' });
+      } else {
+        setFormError('Failed to create: ' + (result.error?.message || 'Unknown error'));
       }
     }
     
-    setIsEditing(false);
-    setFormData({ title: '', content: '' });
+    setSaving(false);
   };
 
   const formatDate = (dateString) => {
@@ -1441,6 +1855,11 @@ function AdminAnnouncements() {
           <h3 className="text-lg font-semibold text-white mb-4">
             {editingId ? 'Edit Announcement' : 'Add New Announcement'}
           </h3>
+          {formError && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+              <p className="text-red-400 text-sm">{formError}</p>
+            </div>
+          )}
           <form onSubmit={handleSave} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Title</label>
@@ -1463,13 +1882,13 @@ function AdminAnnouncements() {
               />
             </div>
             <div className="flex space-x-3">
-              <button type="submit" className="px-6 py-2 bg-cyan-500 text-white rounded-lg">
-                Save
+              <button type="submit" disabled={saving} className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white rounded-lg transition-all">
+                {saving ? 'Saving...' : 'Save'}
               </button>
               <button 
                 type="button" 
-                onClick={() => setIsEditing(false)}
-                className="px-6 py-2 bg-slate-700 text-white rounded-lg"
+                onClick={() => { setIsEditing(false); setFormError(''); }}
+                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all"
               >
                 Cancel
               </button>
@@ -1518,8 +1937,12 @@ function AdminAnnouncements() {
 function AdminGallery() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [galleryError, setGalleryError] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newCaption, setNewCaption] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
 
   // Fetch images on mount
   useEffect(() => {
@@ -1543,21 +1966,64 @@ function AdminGallery() {
     setLoading(false);
   };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    console.log('File selected:', file.name, file.size, file.type);
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      setGalleryError('File size exceeds 5MB limit');
+      return;
+    }
+
+    setSelectedFile(file);
+    setNewImageUrl('');
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      console.log('FileReader complete, base64 length:', reader.result.length);
+      setPreviewUrl(reader.result);
+    };
+    reader.onerror = (error) => {
+      console.error('FileReader error:', error);
+      setGalleryError('Failed to read file');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (newImageUrl.trim()) {
-      const result = await galleryService.create({
-        url: newImageUrl,
-        caption: newCaption || 'New Image'
-      });
-      
-      if (result.success && result.data) {
-        setImages([result.data, ...images]);
-      }
-      
+    if (!newImageUrl.trim() && !selectedFile) return;
+    setSaving(true);
+    setGalleryError('');
+
+    let fileData = null;
+    
+    // If file selected, convert to base64
+    if (selectedFile) {
+      fileData = previewUrl;
+    }
+
+    const result = await galleryService.create({
+      url: newImageUrl.trim(),
+      caption: newCaption.trim() || 'New Image',
+      fileData
+    });
+    
+    if (result.success && result.data) {
+      // Reload from localStorage to ensure sync
+      await loadImages();
       setNewImageUrl('');
       setNewCaption('');
+      setSelectedFile(null);
+      setPreviewUrl('');
+    } else {
+      setGalleryError('Failed to add image: ' + (result.error?.message || 'Unknown error'));
     }
+    setSaving(false);
   };
 
   const handleDelete = async (id) => {
@@ -1565,9 +2031,9 @@ function AdminGallery() {
     
     const result = await galleryService.delete(id);
     if (result.success) {
-      setImages(images.filter(img => img.id !== id));
+      setImages(prev => prev.filter(img => img.id !== id));
     } else {
-      alert('Failed to delete image');
+      alert('Failed to delete image: ' + (result.error?.message || 'Unknown error'));
     }
   };
 
@@ -1582,7 +2048,40 @@ function AdminGallery() {
       {/* Add New Image */}
       <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
         <h3 className="text-lg font-semibold text-white mb-4">Add New Image</h3>
+        {galleryError && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+            <p className="text-red-400 text-sm">{galleryError}</p>
+          </div>
+        )}
         <form onSubmit={handleAdd} className="space-y-4">
+          {/* File Upload Option */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Upload from Computer</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-500 file:text-white hover:file:bg-cyan-400"
+            />
+            <p className="text-xs text-gray-500 mt-1">Maximum file size: 5MB</p>
+          </div>
+          
+          {/* Preview */}
+          {previewUrl && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-400 mb-2">Preview:</p>
+              <img src={previewUrl} alt="Preview" className="max-w-xs max-h-48 rounded-lg object-cover" />
+            </div>
+          )}
+          
+          {/* OR Divider */}
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 h-px bg-slate-700"></div>
+            <span className="text-gray-500 text-sm">OR</span>
+            <div className="flex-1 h-px bg-slate-700"></div>
+          </div>
+          
+          {/* URL Option */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Image URL</label>
             <input
@@ -1591,9 +2090,9 @@ function AdminGallery() {
               onChange={(e) => setNewImageUrl(e.target.value)}
               placeholder="https://example.com/image.jpg"
               className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
-              required
             />
           </div>
+          
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Caption</label>
             <input
@@ -1604,8 +2103,13 @@ function AdminGallery() {
               className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
             />
           </div>
-          <button type="submit" className="px-6 py-2 bg-green-500 text-white rounded-lg">
-            Add Image
+          
+          <button 
+            type="submit" 
+            disabled={saving || (!newImageUrl.trim() && !selectedFile)} 
+            className="px-6 py-2 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-white rounded-lg transition-all"
+          >
+            {saving ? 'Adding...' : 'Add Image'}
           </button>
         </form>
       </div>
@@ -1645,6 +2149,945 @@ function CheckInRow({ name, status, statusColor, location, time }) {
       <td className="py-4 px-4 text-gray-400">{location}</td>
       <td className="py-4 px-4 text-gray-400">{time}</td>
     </tr>
+  );
+}
+
+// Admin Alerts Component
+function AdminAlerts() {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({
+    typhoon_name: '',
+    signal_level: 1,
+    description: '',
+    location: 'Naga City, Camarines Sur'
+  });
+  const [formError, setFormError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    let channel = null;
+    let pollInterval = null;
+    
+    const setup = async () => {
+      await loadAlerts();
+      
+      // Subscribe to real-time alert updates
+      channel = alertService.subscribeToAlerts((payload) => {
+        if (payload.eventType === 'INSERT') {
+          setAlerts(prev => [payload.new, ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+          setAlerts(prev => prev.map(a => a.id === payload.new.id ? payload.new : a));
+        } else if (payload.eventType === 'DELETE') {
+          setAlerts(prev => prev.filter(a => a.id !== payload.old.id));
+        }
+      });
+      
+      // Fallback: Poll every 5 seconds if realtime fails
+      if (!channel) {
+        pollInterval = setInterval(() => {
+          loadAlerts();
+        }, 5000);
+      }
+    };
+    
+    setup();
+    
+    return () => {
+      if (channel) {
+        alertService.unsubscribeFromAlerts(channel);
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, []);
+
+  const loadAlerts = async () => {
+    const result = await alertService.getAllAlerts();
+    if (result.data) {
+      setAlerts(result.data);
+    }
+    setLoading(false);
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError('');
+
+    const result = await alertService.createAlert(formData);
+    
+    if (result.data) {
+      setAlerts(prev => [result.data, ...prev]);
+      setFormData({
+        typhoon_name: '',
+        signal_level: 1,
+        description: '',
+        location: 'Naga City, Camarines Sur'
+      });
+    } else {
+      setFormError('Failed to create alert');
+    }
+    setSaving(false);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError('');
+
+    const result = await alertService.updateAlert(editingId, formData);
+    
+    if (result.data) {
+      setAlerts(prev => prev.map(a => a.id === editingId ? result.data : a));
+      setIsEditing(false);
+      setEditingId(null);
+      setFormData({
+        typhoon_name: '',
+        signal_level: 1,
+        description: '',
+        location: 'Naga City, Camarines Sur'
+      });
+    } else {
+      setFormError('Failed to update alert');
+    }
+    setSaving(false);
+  };
+
+  const handleDeactivate = async (id) => {
+    if (!confirm('Are you sure you want to deactivate this alert?')) return;
+    
+    setSuccessMessage('');
+    setFormError('');
+    
+    const result = await alertService.deactivateAlert(id);
+    if (result.data || result.error === null) {
+      // Update local state
+      setAlerts(prev => prev.map(a => a.id === id ? { ...a, is_active: false } : a));
+      setSuccessMessage('Alert deactivated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      // Force reload from server to ensure sync
+      setTimeout(() => loadAlerts(), 1000);
+    } else {
+      setFormError('Failed to deactivate alert');
+    }
+  };
+
+  const handleReactivate = async (id) => {
+    if (!confirm('Reactivating this alert will deactivate all other active alerts. Continue?')) return;
+    
+    setSuccessMessage('');
+    setFormError('');
+    
+    const result = await alertService.reactivateAlert(id);
+    if (result.data || result.error === null) {
+      setSuccessMessage('Alert reactivated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      loadAlerts();
+    } else {
+      setFormError('Failed to reactivate alert');
+    }
+  };
+
+  const handleDeleteAlert = async (id) => {
+    if (!confirm('Are you sure you want to delete this alert? This cannot be undone.')) return;
+    
+    setSuccessMessage('');
+    setFormError('');
+    
+    const result = await alertService.deleteAlert(id);
+    if (result.success || result.error === null) {
+      setSuccessMessage('Alert deleted successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      loadAlerts();
+    } else {
+      setFormError('Failed to delete alert');
+    }
+  };
+
+  const handleEdit = (alert) => {
+    setIsEditing(true);
+    setEditingId(alert.id);
+    setFormData({
+      typhoon_name: alert.typhoon_name || '',
+      signal_level: alert.signal_level || 1,
+      description: alert.description || '',
+      location: alert.location || 'Naga City, Camarines Sur'
+    });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditingId(null);
+    setFormData({
+      typhoon_name: '',
+      signal_level: 1,
+      description: '',
+      location: 'Naga City, Camarines Sur'
+    });
+    setFormError('');
+  };
+
+  const getSignalColor = (level) => {
+    const colors = {
+      1: 'bg-yellow-500',
+      2: 'bg-orange-500',
+      3: 'bg-red-500',
+      4: 'bg-red-700',
+      5: 'bg-red-900'
+    };
+    return colors[level] || 'bg-gray-500';
+  };
+
+  if (loading) {
+    return <div className="text-white">Loading alerts...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Alert Form */}
+      <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold text-white mb-4">
+          {isEditing ? 'Edit Alert' : 'Broadcast New Alert'}
+        </h3>
+        {formError && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+            <p className="text-red-400 text-sm">{formError}</p>
+          </div>
+        )}
+        {successMessage && (
+          <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 mb-4">
+            <p className="text-green-400 text-sm">{successMessage}</p>
+          </div>
+        )}
+        <form onSubmit={isEditing ? handleUpdate : handleCreate} className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Typhoon Name</label>
+              <input
+                type="text"
+                value={formData.typhoon_name}
+                onChange={(e) => setFormData({ ...formData, typhoon_name: e.target.value })}
+                placeholder="e.g., Typhoon Ambo"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Signal Level</label>
+              <select
+                value={formData.signal_level}
+                onChange={(e) => setFormData({ ...formData, signal_level: parseInt(e.target.value) })}
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              >
+                <option value={1}>Signal No. 1 (Yellow)</option>
+                <option value={2}>Signal No. 2 (Orange)</option>
+                <option value={3}>Signal No. 3 (Red)</option>
+                <option value={4}>Signal No. 4 (Dark Red)</option>
+                <option value={5}>Signal No. 5 (Maroon)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Enter alert details and safety instructions..."
+              rows="3"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Location</label>
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              placeholder="e.g., Naga City, Camarines Sur"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              required
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white rounded-lg transition-all"
+            >
+              {saving ? 'Saving...' : (isEditing ? 'Update Alert' : 'Broadcast Alert')}
+            </button>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Alerts List */}
+      <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold text-white mb-4">Alert History</h3>
+        {alerts.length === 0 ? (
+          <p className="text-gray-400">No alerts yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {alerts.map((alert) => {
+              console.log('Rendering alert:', alert.id, 'is_active:', alert.is_active, 'type:', typeof alert.is_active);
+              return (
+              <div
+                key={alert.id}
+                className={`p-4 rounded-xl border ${!!alert.is_active ? 'border-cyan-500/50 bg-cyan-500/10' : 'border-slate-700 bg-slate-800/30'}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className={`px-3 py-1 rounded-full text-white text-sm font-semibold ${getSignalColor(alert.signal_level)}`}>
+                        Signal {alert.signal_level}
+                      </span>
+                      {!!alert.is_active && (
+                        <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-white font-semibold">{alert.typhoon_name}</h4>
+                    <p className="text-gray-400 text-sm mt-1">{alert.description}</p>
+                    <p className="text-gray-500 text-xs mt-2">{alert.location}</p>
+                    <p className="text-gray-600 text-xs mt-1">
+                      {new Date(alert.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(alert)}
+                      className="px-3 py-1 bg-blue-500/20 text-blue-400 text-sm rounded hover:bg-blue-500/30 transition-all"
+                    >
+                      Edit
+                    </button>
+                    {!!alert.is_active ? (
+                      <button
+                        onClick={() => handleDeactivate(alert.id)}
+                        className="px-3 py-1 bg-red-500/20 text-red-400 text-sm rounded hover:bg-red-500/30 transition-all"
+                      >
+                        Deactivate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleReactivate(alert.id)}
+                        className="px-3 py-1 bg-green-500/20 text-green-400 text-sm rounded hover:bg-green-500/30 transition-all"
+                      >
+                        Reactivate
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteAlert(alert.id)}
+                      className="px-3 py-1 bg-gray-500/20 text-gray-400 text-sm rounded hover:bg-gray-500/30 transition-all"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )})}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Admin Evacuation Routes Component
+function AdminEvacuation() {
+  const [routes, setRoutes] = useState([]);
+  const [warningZones, setWarningZones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [activeTab, setActiveTab] = useState('routes'); // 'routes' or 'warnings'
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    capacity: '',
+    distance_from_campus_km: '',
+    latitude: null,
+    longitude: null
+  });
+  const [warningFormData, setWarningFormData] = useState({
+    name: '',
+    description: '',
+    latitude: null,
+    longitude: null,
+    radius_meters: 50
+  });
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    let channel = null;
+    let pollInterval = null;
+    
+    const setup = async () => {
+      await loadRoutes();
+      
+      // Load warning zones from localStorage
+      const zones = getWarningZones();
+      setWarningZones(zones);
+      
+      // Subscribe to real-time evacuation route updates
+      channel = evacuationService.subscribeToRoutes((payload) => {
+        if (payload.eventType === 'INSERT') {
+          setRoutes(prev => [...prev, payload.new]);
+        } else if (payload.eventType === 'UPDATE') {
+          setRoutes(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
+        } else if (payload.eventType === 'DELETE') {
+          setRoutes(prev => prev.filter(r => r.id !== payload.old.id));
+        }
+      });
+      
+      // Fallback: Poll every 5 seconds if realtime fails
+      if (!channel) {
+        pollInterval = setInterval(() => {
+          loadRoutes();
+        }, 5000);
+      }
+    };
+    
+    setup();
+    
+    return () => {
+      if (channel) {
+        evacuationService.unsubscribeFromRoutes(channel);
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, []);
+
+  const loadRoutes = async () => {
+    const result = await evacuationService.getEvacuationRoutes();
+    if (result.data) {
+      setRoutes(result.data);
+    }
+    setLoading(false);
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError('');
+
+    if (!formData.latitude || !formData.longitude) {
+      setFormError('Please click on the map to set the evacuation center location');
+      setSaving(false);
+      return;
+    }
+
+    const result = await evacuationService.createEvacuationRoute({
+      ...formData,
+      capacity: parseInt(formData.capacity) || 0,
+      distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
+      latitude: parseFloat(formData.latitude),
+      longitude: parseFloat(formData.longitude)
+    });
+    
+    if (result.data) {
+      setRoutes(prev => [...prev, result.data]);
+      setFormData({
+        name: '',
+        description: '',
+        capacity: '',
+        distance_from_campus_km: '',
+        latitude: null,
+        longitude: null
+      });
+    } else {
+      setFormError('Failed to create route');
+    }
+    setSaving(false);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError('');
+
+    const result = await evacuationService.updateEvacuationRoute(editingId, {
+      ...formData,
+      capacity: parseInt(formData.capacity) || 0,
+      distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
+      latitude: parseFloat(formData.latitude),
+      longitude: parseFloat(formData.longitude)
+    });
+    
+    if (result.data) {
+      setRoutes(prev => prev.map(r => r.id === editingId ? result.data : r));
+      setIsEditing(false);
+      setEditingId(null);
+      setFormData({
+        name: '',
+        description: '',
+        capacity: '',
+        distance_from_campus_km: '',
+        latitude: null,
+        longitude: null
+      });
+    } else {
+      setFormError('Failed to update route');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Are you sure you want to delete this evacuation route?')) return;
+    
+    const result = await evacuationService.deleteEvacuationRoute(id);
+    if (result.error === null) {
+      setRoutes(prev => prev.filter(r => r.id !== id));
+    }
+  };
+
+  const handleEdit = (route) => {
+    setIsEditing(true);
+    setEditingId(route.id);
+    setFormData({
+      name: route.name || '',
+      description: route.description || '',
+      capacity: route.capacity?.toString() || '',
+      distance_from_campus_km: route.distance_from_campus_km?.toString() || '',
+      latitude: route.latitude || null,
+      longitude: route.longitude || null
+    });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditingId(null);
+    setFormData({
+      name: '',
+      description: '',
+      capacity: '',
+      distance_from_campus_km: '',
+      latitude: null,
+      longitude: null
+    });
+    setFormError('');
+  };
+
+  if (loading) {
+    return <div className="text-white">Loading evacuation routes...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Route Form */}
+      <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold text-white mb-4">
+          {isEditing ? 'Edit Evacuation Route' : 'Add Evacuation Route'}
+        </h3>
+        {formError && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+            <p className="text-red-400 text-sm">{formError}</p>
+          </div>
+        )}
+        <form onSubmit={isEditing ? handleUpdate : handleCreate} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Route Name</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., AdNU Main Building"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Enter route details and directions..."
+              rows="2"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+            />
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Capacity</label>
+              <input
+                type="number"
+                value={formData.capacity}
+                onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
+                placeholder="e.g., 500"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Distance from Campus: <span className="text-cyan-400">{formData.distance_from_campus_km || 0} km</span>
+              </label>
+              <p className="text-xs text-gray-500">Auto-calculated from map location</p>
+            </div>
+          </div>
+          
+          {/* Map Picker */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Click on the map to set location
+            </label>
+            <div className="rounded-xl overflow-hidden border border-slate-700" style={{ height: '300px' }}>
+              <MapContainer
+                center={CAMPUS_LOCATION}
+                zoom={16}
+                style={{ height: '100%', width: '100%' }}
+                scrollWheelZoom={true}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                
+                {/* Campus Marker (red) */}
+                <Marker position={CAMPUS_LOCATION} icon={campusIcon}>
+                  <Popup>
+                    <div className="text-center p-2">
+                      <strong className="text-lg text-red-600">AdNU Campus</strong>
+                      <p className="text-xs text-gray-500">Central Point</p>
+                    </div>
+                  </Popup>
+                </Marker>
+                
+                {/* Selected Location Marker (green) */}
+                {formData.latitude && formData.longitude && (
+                  <Marker 
+                    position={[formData.latitude, formData.longitude]} 
+                    icon={evacuationIcon}
+                    draggable={true}
+                    eventHandlers={{
+                      dragend: (e) => {
+                        const { lat, lng } = e.target.getLatLng();
+                        const distance = calculateDistance(CAMPUS_LOCATION[0], CAMPUS_LOCATION[1], lat, lng);
+                        setFormData({ 
+                          ...formData, 
+                          latitude: lat, 
+                          longitude: lng,
+                          distance_from_campus_km: distance.toFixed(2)
+                        });
+                      }
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-center">
+                        <strong>Evacuation Center Location</strong>
+                        <p className="text-xs text-gray-500">Drag to adjust</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                )}
+                
+                {/* Click handler to place marker */}
+                <MapClickHandler 
+                  onClick={(lat, lng) => {
+                    const distance = calculateDistance(CAMPUS_LOCATION[0], CAMPUS_LOCATION[1], lat, lng);
+                    setFormData({ 
+                      ...formData, 
+                      latitude: lat, 
+                      longitude: lng,
+                      distance_from_campus_km: distance.toFixed(2)
+                    });
+                  }}
+                />
+              </MapContainer>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              💡 Tip: Click anywhere on the map to place the evacuation center. Drag the green marker to adjust.
+            </p>
+          </div>
+          <div className="flex space-x-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-white rounded-lg transition-all"
+            >
+              {saving ? 'Saving...' : (isEditing ? 'Update Route' : 'Add Route')}
+            </button>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Routes List */}
+      <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
+        <h3 className="text-lg font-semibold text-white mb-4">Evacuation Routes</h3>
+        {routes.length === 0 ? (
+          <p className="text-gray-400">No evacuation routes yet.</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            {routes.map((route) => (
+              <div
+                key={route.id}
+                className="p-4 rounded-xl border border-slate-700 bg-slate-800/30"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <h4 className="text-white font-semibold">{route.name}</h4>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(route)}
+                      className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded hover:bg-blue-500/30 transition-all"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(route.id)}
+                      className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded hover:bg-red-500/30 transition-all"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                <p className="text-gray-400 text-sm mb-3">{route.description}</p>
+                <div className="flex items-center space-x-4 text-xs text-gray-500">
+                  <span>Capacity: {route.capacity || 'N/A'}</span>
+                  <span>Distance: {route.distance_from_campus_km} km</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Warning Zones Section */}
+      <div className="bg-slate-800/50 rounded-2xl p-6 border border-orange-500/30">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">⚠️</span>
+          <h3 className="text-lg font-semibold text-white">Warning Zones (Areas to Avoid)</h3>
+        </div>
+        
+        {/* Add Warning Zone Form */}
+        <div className="bg-slate-900/50 rounded-xl p-4 mb-6 border border-slate-700/50">
+          <h4 className="text-sm font-medium text-orange-400 mb-4">Add Danger Zone</h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Zone Name</label>
+              <input
+                type="text"
+                value={warningFormData.name}
+                onChange={(e) => setWarningFormData({ ...warningFormData, name: e.target.value })}
+                placeholder="e.g., Flooded Area - Bagumbayan Street"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+              <textarea
+                value={warningFormData.description}
+                onChange={(e) => setWarningFormData({ ...warningFormData, description: e.target.value })}
+                placeholder="Why is this area dangerous? e.g., Road is flooded and impassable..."
+                rows="2"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              />
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Danger Radius (meters)</label>
+                <input
+                  type="number"
+                  value={warningFormData.radius_meters}
+                  onChange={(e) => setWarningFormData({ ...warningFormData, radius_meters: parseInt(e.target.value) || 50 })}
+                  placeholder="e.g., 50"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+                />
+                <p className="text-xs text-gray-500 mt-1">Distance around the danger point to mark as unsafe</p>
+              </div>
+            </div>
+            
+            {/* Warning Zone Map Picker */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Click on the map to mark danger location
+              </label>
+              <div className="rounded-xl overflow-hidden border border-orange-500/30" style={{ height: '300px' }}>
+                <MapContainer
+                  center={CAMPUS_LOCATION}
+                  zoom={16}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={true}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  
+                  {/* Campus Marker */}
+                  <Marker position={CAMPUS_LOCATION} icon={campusIcon}>
+                    <Popup>
+                      <div className="text-center p-2">
+                        <strong className="text-lg text-red-600">AdNU Campus</strong>
+                        <p className="text-xs text-gray-500">Reference Point</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                  
+                  {/* Warning Zone Marker */}
+                  {warningFormData.latitude && warningFormData.longitude && (
+                    <Marker 
+                      position={[warningFormData.latitude, warningFormData.longitude]} 
+                      icon={warningIcon}
+                      draggable={true}
+                      eventHandlers={{
+                        dragend: (e) => {
+                          const { lat, lng } = e.target.getLatLng();
+                          setWarningFormData({ 
+                            ...warningFormData, 
+                            latitude: lat, 
+                            longitude: lng
+                          });
+                        }
+                      }}
+                    >
+                      <Popup>
+                        <div className="text-center">
+                          <strong className="text-orange-600">⚠️ Danger Zone</strong>
+                          <p className="text-xs text-gray-500">Drag to adjust</p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  )}
+                  
+                  {/* Warning Zone Circle Preview */}
+                  {warningFormData.latitude && warningFormData.longitude && (
+                    <Circle
+                      center={[warningFormData.latitude, warningFormData.longitude]}
+                      radius={warningFormData.radius_meters || 50}
+                      pathOptions={{
+                        color: '#f97316',
+                        fillColor: '#f97316',
+                        fillOpacity: 0.3,
+                        weight: 2
+                      }}
+                    />
+                  )}
+                  
+                  {/* Click handler */}
+                  <MapClickHandler 
+                    onClick={(lat, lng) => {
+                      // Auto-calculate radius based on distance from campus
+                      const distance = calculateDistance(CAMPUS_LOCATION[0], CAMPUS_LOCATION[1], lat, lng);
+                      let autoRadius = 50; // default
+                      if (distance < 0.3) {
+                        autoRadius = 30; // On campus - smaller radius
+                      } else if (distance < 0.8) {
+                        autoRadius = 50; // Near campus
+                      } else if (distance < 2) {
+                        autoRadius = 75; // Medium distance
+                      } else {
+                        autoRadius = 100; // Far from campus
+                      }
+                      setWarningFormData({ 
+                        ...warningFormData, 
+                        latitude: lat, 
+                        longitude: lng,
+                        radius_meters: autoRadius
+                      });
+                    }}
+                  />
+                </MapContainer>
+              </div>
+              <p className="text-xs text-orange-400/70 mt-2">
+                ⚠️ Tip: Click where the danger is. Students will see this as an area to avoid.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => {
+                if (!warningFormData.name || !warningFormData.latitude || !warningFormData.longitude) {
+                  alert('Please fill in the name and click on the map to set the danger location');
+                  return;
+                }
+                const newZone = {
+                  id: 'warning-' + Date.now(),
+                  name: warningFormData.name,
+                  description: warningFormData.description,
+                  latitude: warningFormData.latitude,
+                  longitude: warningFormData.longitude,
+                  radius_meters: warningFormData.radius_meters || 50,
+                  created_at: new Date().toISOString()
+                };
+                const updated = [...warningZones, newZone];
+                setWarningZones(updated);
+                saveWarningZones(updated);
+                setWarningFormData({
+                  name: '',
+                  description: '',
+                  latitude: null,
+                  longitude: null,
+                  radius_meters: 50
+                });
+              }}
+              className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg transition-all"
+            >
+              ⚠️ Add Warning Zone
+            </button>
+          </div>
+        </div>
+        
+        {/* Warning Zones List */}
+        <h4 className="text-sm font-medium text-gray-300 mb-4">Active Warning Zones</h4>
+        {warningZones.length === 0 ? (
+          <p className="text-gray-500">No warning zones set. Add danger areas above.</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            {warningZones.map((zone) => (
+              <div
+                key={zone.id}
+                className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/10"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚠️</span>
+                    <h4 className="text-white font-semibold">{zone.name}</h4>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const updated = warningZones.filter(z => z.id !== zone.id);
+                      setWarningZones(updated);
+                      saveWarningZones(updated);
+                    }}
+                    className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded hover:bg-red-500/30 transition-all"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="text-orange-200/70 text-sm mb-2">{zone.description}</p>
+                <div className="text-xs text-orange-400/60">
+                  Radius: {zone.radius_meters || 50}m | Set: {new Date(zone.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

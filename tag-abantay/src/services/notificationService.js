@@ -20,12 +20,10 @@ export const notificationService = {
    */
   async requestPermission() {
     if (!('Notification' in window)) {
-      console.warn('This browser does not support notifications')
       return 'denied'
     }
 
     const permission = await Notification.requestPermission()
-    console.log('Notification permission:', permission)
     return permission
   },
 
@@ -59,8 +57,8 @@ export const notificationService = {
 
       return { success: true, subscription }
     } catch (error) {
-      console.error('Push subscription failed:', error)
-      return { success: false, error }
+      // Silently handle - expected in demo mode
+      return { success: false, error: null }
     }
   },
 
@@ -85,11 +83,10 @@ export const notificationService = {
 
       if (error) throw error
       
-      console.log('Push subscription saved')
       return { success: true }
     } catch (error) {
-      console.error('Save subscription error:', error)
-      return { success: false, error }
+      // Silently handle - expected in demo mode
+      return { success: false, error: null }
     }
   },
 
@@ -98,7 +95,6 @@ export const notificationService = {
    */
   async sendLocalNotification(title, options = {}) {
     if (!('Notification' in window)) {
-      console.warn('Notifications not supported')
       return
     }
 

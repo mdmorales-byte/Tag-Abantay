@@ -4,13 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('Supabase URL:', supabaseUrl ? 'Found' : 'Missing')
-console.log('Supabase Key:', supabaseAnonKey ? 'Found (first 20 chars: ' + supabaseAnonKey.substring(0, 20) + '...)' : 'Missing')
-
 // Create a simulated client for development without Supabase
 const createSimulatedClient = () => {
-  console.warn('Using simulated Supabase client. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for real backend.')
-  
   return {
     auth: {
       signInWithPassword: async () => ({ 
@@ -90,29 +85,47 @@ const createSimulatedClient = () => {
 
 // Singleton pattern - create only one instance
 let supabaseInstance = null
+let useSimulatedMode = false
 
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
     // Use simulated client if env vars are missing
     if (!supabaseUrl || !supabaseAnonKey) {
+      console.warn('Supabase credentials missing - using demo mode')
       supabaseInstance = createSimulatedClient()
+      useSimulatedMode = true
     } else {
-      supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: true
-        },
-        realtime: {
-          params: {
-            eventsPerSecond: 10
+      console.log('Connecting to Supabase:', supabaseUrl)
+      try {
+        supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: true
+          },
+          realtime: {
+            params: {
+              eventsPerSecond: 10
+            }
+          },
+          global: {
+            headers: {
+              'Accept': 'application/json',
+              'Prefer': 'return=representation'
+            }
           }
-        }
-      })
+        })
+      } catch (error) {
+        supabaseInstance = createSimulatedClient()
+        useSimulatedMode = true
+      }
     }
   }
   return supabaseInstance
 }
+
+// Check if we're in simulated mode
+export const isSimulatedMode = () => useSimulatedMode
 
 // Export the client instance
 export const supabase = getSupabaseClient()
@@ -132,6 +145,7 @@ export const TABLES = {
 export const CHANNELS = {
   ALERTS: 'alerts-channel',
   CHECK_INS: 'check-ins-channel',
-  ANNOUNCEMENTS: 'announcements-channel',
-  INCIDENTS: 'incidents-channel'
+  BULLETINS: 'bulletins-channel',
+  INCIDENTS: 'incidents-channel',
+  EVACUATION_ROUTES: 'evacuation-routes-channel'
 }

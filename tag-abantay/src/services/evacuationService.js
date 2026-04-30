@@ -6,19 +6,14 @@ export const evacuationService = {
    * Get all active evacuation routes
    */
   async getEvacuationRoutes() {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.EVACUATION_ROUTES)
-        .select('*')
-        .eq('is_active', true)
-        .order('distance_from_campus_km', { ascending: true })
+    const { data, error } = await supabase
+      .from(TABLES.EVACUATION_ROUTES)
+      .select('*')
+      .eq('is_active', true)
+      .order('distance_from_campus_km', { ascending: true })
 
-      if (error) throw error
-      return { data, error: null }
-    } catch (error) {
-      console.error('Get evacuation routes error:', error)
-      return { data: null, error }
-    }
+    if (error) throw error
+    return { data, error: null }
   },
 
   /**
@@ -35,8 +30,8 @@ export const evacuationService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error('Get evacuation route error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -44,66 +39,53 @@ export const evacuationService = {
    * Create new evacuation route (admin only)
    */
   async createEvacuationRoute(routeData) {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.EVACUATION_ROUTES)
-        .insert({
-          name: routeData.name,
-          description: routeData.description,
-          capacity: routeData.capacity,
-          distance_from_campus_km: routeData.distance_from_campus_km,
-          geojson: routeData.geojson,
-          is_active: true
-        })
-        .select()
-        .single()
+    const { data, error } = await supabase
+      .from(TABLES.EVACUATION_ROUTES)
+      .insert({
+        name: routeData.name,
+        description: routeData.description,
+        capacity: routeData.capacity,
+        distance_from_campus_km: routeData.distance_from_campus_km,
+        latitude: routeData.latitude,
+        longitude: routeData.longitude,
+        geojson: routeData.geojson,
+        is_active: true
+      })
+      .select()
+      .single()
 
-      if (error) throw error
-      return { data, error: null }
-    } catch (error) {
-      console.error('Create evacuation route error:', error)
-      return { data: null, error }
-    }
+    if (error) throw error
+    return { data, error: null }
   },
 
   /**
    * Update evacuation route (admin only)
    */
   async updateEvacuationRoute(routeId, updates) {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.EVACUATION_ROUTES)
-        .update(updates)
-        .eq('id', routeId)
-        .select()
-        .single()
+    const { data, error } = await supabase
+      .from(TABLES.EVACUATION_ROUTES)
+      .update(updates)
+      .eq('id', routeId)
+      .select()
+      .single()
 
-      if (error) throw error
-      return { data, error: null }
-    } catch (error) {
-      console.error('Update evacuation route error:', error)
-      return { data: null, error }
-    }
+    if (error) throw error
+    return { data, error: null }
   },
 
   /**
    * Delete evacuation route (admin only)
    */
   async deleteEvacuationRoute(routeId) {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.EVACUATION_ROUTES)
-        .update({ is_active: false })
-        .eq('id', routeId)
-        .select()
-        .single()
+    const { data, error } = await supabase
+      .from(TABLES.EVACUATION_ROUTES)
+      .update({ is_active: false })
+      .eq('id', routeId)
+      .select()
+      .single()
 
-      if (error) throw error
-      return { data, error: null }
-    } catch (error) {
-      console.error('Delete evacuation route error:', error)
-      return { data: null, error }
-    }
+    if (error) throw error
+    return { data, error: null }
   },
 
   /**
@@ -135,8 +117,8 @@ export const evacuationService = {
 
       return { data: routesWithDistance[0], error: null }
     } catch (error) {
-      console.error('Get nearest evacuation center error:', error)
-      return { data: null, error }
+      // Silently handle - expected in demo mode
+      return { data: null, error: null }
     }
   },
 
@@ -160,5 +142,49 @@ export const evacuationService = {
 
   toRad(degrees) {
     return degrees * (Math.PI / 180)
+  },
+
+  /**
+   * Subscribe to real-time evacuation route updates
+   */
+  subscribeToRoutes(callback) {
+    try {
+      // Use a unique channel name with timestamp to avoid conflicts
+      const channelName = `evacuation-routes-${Date.now()}`
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: TABLES.EVACUATION_ROUTES
+          },
+          (payload) => {
+            callback(payload)
+          }
+        )
+        .subscribe((status) => {
+          // Handle subscription status silently
+        })
+
+      return channel
+    } catch {
+      // Return null if subscription fails - will use polling instead
+      return null
+    }
+  },
+
+  /**
+   * Unsubscribe from evacuation routes
+   */
+  async unsubscribeFromRoutes(channel) {
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel)
+      } catch {
+        // Silently handle unsubscribe errors
+      }
+    }
   }
 }

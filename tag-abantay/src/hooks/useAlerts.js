@@ -8,23 +8,46 @@ export const useAlerts = () => {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    loadCurrentAlert()
-
-    // Subscribe to real-time updates
-    const channel = alertService.subscribeToAlerts((payload) => {
-      console.log('Alert update:', payload)
+    let isMounted = true
+    let channel = null
+    let pollInterval = null
+    
+    const setupSubscription = async () => {
+      await loadCurrentAlert()
       
-      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        if (payload.new?.is_active) {
-          setCurrentAlert(payload.new)
+      if (!isMounted) return
+      
+      // Subscribe to real-time updates (for Supabase mode)
+      channel = alertService.subscribeToAlerts((payload) => {
+        if (!isMounted) return
+        
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          if (payload.new?.is_active) {
+            setCurrentAlert(payload.new)
+          }
+        } else if (payload.eventType === 'DELETE') {
+          setCurrentAlert(null)
         }
-      } else if (payload.eventType === 'DELETE') {
-        setCurrentAlert(null)
-      }
-    })
+      })
+      
+      // Always poll every 3 seconds to detect localStorage changes
+      pollInterval = setInterval(() => {
+        if (isMounted) {
+          loadCurrentAlert()
+        }
+      }, 3000)
+    }
+    
+    setupSubscription()
 
     return () => {
-      alertService.unsubscribeFromAlerts(channel)
+      isMounted = false
+      if (channel) {
+        alertService.unsubscribeFromAlerts(channel)
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval)
+      }
     }
   }, [])
 
@@ -37,8 +60,8 @@ export const useAlerts = () => {
       
       setCurrentAlert(data)
     } catch (err) {
+      // Silently handle - expected in demo mode
       setError(err)
-      console.error('Load alert error:', err)
     } finally {
       setLoading(false)
     }
@@ -110,7 +133,7 @@ export const useAlerts = () => {
   }
 
   const isAlertActive = () => {
-    return currentAlert?.is_active || false
+    return !!currentAlert?.is_active
   }
 
   return {

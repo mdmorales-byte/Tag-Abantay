@@ -7,9 +7,9 @@ export const useCheckIns = (userId = null) => {
   const [latestCheckIn, setLatestCheckIn] = useState(null)
   const [safetyStats, setSafetyStats] = useState({
     safe: 0,
-    need_help: 0,
+    needsHelp: 0,
     unreachable: 0,
-    not_reported: 0,
+    notReported: 0,
     total_users: 0
   })
   const [loading, setLoading] = useState(true)
@@ -21,8 +21,6 @@ export const useCheckIns = (userId = null) => {
 
     // Subscribe to real-time check-in updates
     const channel = checkInService.subscribeToCheckIns((payload) => {
-      console.log('New check-in:', payload)
-      
       // Add new check-in to the list
       setCheckIns(prev => [payload.new, ...prev])
       
@@ -52,8 +50,8 @@ export const useCheckIns = (userId = null) => {
       
       setCheckIns(result.data || [])
     } catch (err) {
+      // Silently handle - expected in demo mode
       setError(err)
-      console.error('Load check-ins error:', err)
     } finally {
       setLoading(false)
     }
@@ -65,9 +63,16 @@ export const useCheckIns = (userId = null) => {
       
       if (error) throw error
       
-      setSafetyStats(data)
+      // Normalize keys to camelCase for consistent usage across components
+      setSafetyStats({
+        safe: data?.safe || 0,
+        needsHelp: data?.need_help || 0,
+        unreachable: data?.unreachable || 0,
+        notReported: data?.not_reported || 0,
+        total_users: data?.total_users || 0
+      })
     } catch (err) {
-      console.error('Load safety stats error:', err)
+      // Silently handle - expected in demo mode
     }
   }
 
@@ -76,7 +81,13 @@ export const useCheckIns = (userId = null) => {
       setLoading(true)
       setError(null)
       
-      const { data, error } = await checkInService.createCheckIn(checkInData)
+      // Ensure userId is always included - use passed userId or from checkInData
+      const dataWithUser = {
+        ...checkInData,
+        userId: checkInData.userId || userId
+      }
+      
+      const { data, error } = await checkInService.createCheckIn(dataWithUser)
       
       if (error) throw error
       
