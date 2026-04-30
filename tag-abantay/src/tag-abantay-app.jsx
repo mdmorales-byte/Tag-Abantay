@@ -212,9 +212,9 @@ function Navigation({ currentPage, setCurrentPage, isLoggedIn, user, handleLogou
             </button>
           </div>
 
-          {/* Alert Banner */}
+          {/* Alert Banner (Desktop/Tablet) */}
           {typhoonAlert.level > 0 && (
-            <div className={`${alertLevel.color} text-white px-4 py-2 mb-0 -mx-4 flex items-center justify-center space-x-2 animate-pulse`}>
+            <div className={`${alertLevel.color} text-white px-4 py-2 mb-0 -mx-4 hidden md:flex items-center justify-center space-x-2 animate-pulse`}>
               <AlertTriangle className="w-5 h-5" />
               <span className="font-bold">{alertLevel.name} - {typhoonAlert.name}</span>
             </div>
@@ -225,6 +225,13 @@ function Navigation({ currentPage, setCurrentPage, isLoggedIn, user, handleLogou
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-slate-900/98 backdrop-blur-lg pt-24 px-6">
+          {/* Mobile Alert Banner (integrated into menu) */}
+          {typhoonAlert.level > 0 && (
+            <div className={`${alertLevel.color} text-white px-4 py-3 rounded-xl mb-6 flex items-center justify-center space-x-2 animate-pulse shadow-lg`}>
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <span className="font-bold text-sm leading-tight text-center">{alertLevel.name} - {typhoonAlert.name}</span>
+            </div>
+          )}
           <div className="flex flex-col space-y-3">
             <MobileNavButton onClick={() => { setCurrentPage('home'); setMobileMenuOpen(false); }}>Home</MobileNavButton>
             <MobileNavButton onClick={() => { setCurrentPage('alerts'); setMobileMenuOpen(false); }}>Alerts</MobileNavButton>
