@@ -316,8 +316,20 @@ function HomePage({ setCurrentPage, typhoonAlert }) {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB') + ' ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString; // Fallback to raw string if invalid
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      }) + ' ' + date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } catch (e) {
+      return dateString;
+    }
   };
 
   return (
@@ -341,21 +353,21 @@ function HomePage({ setCurrentPage, typhoonAlert }) {
 
       {/* Current Alert */}
       {typhoonAlert.level > 0 && (
-        <div className={`${alertLevel.color} text-white rounded-2xl p-8 mb-12 shadow-2xl`}>
-          <div className="flex items-center justify-between mb-4">
+        <div className={`${alertLevel.color} text-white rounded-2xl p-6 md:p-8 mb-12 shadow-2xl`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <div className="flex items-center space-x-4">
-              <AlertTriangle className="w-12 h-12" />
+              <AlertTriangle className="w-10 h-10 md:w-12 md:h-12 shrink-0" />
               <div>
-                <h2 className="text-3xl font-bold">{alertLevel.name}</h2>
-                <p className="text-lg opacity-90">{typhoonAlert.name}</p>
+                <h2 className="text-2xl md:text-3xl font-bold leading-tight">{alertLevel.name}</h2>
+                <p className="text-base md:text-lg opacity-90">{typhoonAlert.name}</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm opacity-75">Last Updated</p>
-              <p className="font-semibold">{typhoonAlert.updated}</p>
+            <div className="md:text-right border-t border-white/20 pt-4 md:border-0 md:pt-0">
+              <p className="text-xs md:text-sm opacity-75 uppercase tracking-wider mb-1">Last Updated</p>
+              <p className="font-semibold text-sm md:text-base">{formatDate(typhoonAlert.updated)}</p>
             </div>
           </div>
-          <p className="text-sm opacity-90">
+          <p className="text-sm opacity-90 leading-relaxed">
             Please stay safe and follow official evacuation procedures. Check in to let us know you're safe.
           </p>
         </div>
@@ -1922,8 +1934,20 @@ function AdminAnnouncements() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB') + ' ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString; // Fallback to raw string if invalid
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      }) + ' ' + date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } catch (e) {
+      return dateString;
+    }
   };
 
   if (loading) {
