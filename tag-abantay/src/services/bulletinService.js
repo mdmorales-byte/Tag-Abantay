@@ -1,5 +1,5 @@
 // src/services/bulletinService.js
-import { supabase, TABLES } from './supabaseClient'
+import { supabase, TABLES, supabaseHelper } from './supabaseClient'
 
 // Helper to handle permission errors gracefully
 function handlePermissionError(error, fallbackData = []) {
@@ -78,7 +78,7 @@ async function supabaseFetch(table, options = {}) {
   }
 
   try {
-    const response = await fetch(url, fetchOptions)
+    const response = await supabaseHelper.safeFetch(url, fetchOptions)
 
     if (!response.ok) {
       let details = ''

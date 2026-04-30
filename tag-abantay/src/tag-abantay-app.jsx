@@ -66,8 +66,16 @@ export default function TagAbantayApp() {
     };
     window.addEventListener('tagabantay-alert', handleAlert);
     
+    // Listen for 401 unauthorized events from the client
+    const handleUnauthorized = () => {
+      console.warn('App: Unauthorized access detected, logging out...');
+      handleLogout();
+    };
+    window.addEventListener('supabase-unauthorized', handleUnauthorized);
+    
     return () => {
       window.removeEventListener('tagabantay-alert', handleAlert);
+      window.removeEventListener('supabase-unauthorized', handleUnauthorized);
     };
   }, []);
 

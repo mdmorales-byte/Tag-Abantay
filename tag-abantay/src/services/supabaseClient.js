@@ -121,6 +121,67 @@ export const isSimulatedMode = () => useSimulatedMode
 // Export the client instance
 export const supabase = getSupabaseClient()
 
+// Constants
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// Supabase Helper Object for manual REST calls
+export const supabaseHelper = {
+  // Helper to get headers with the best available token
+  getHeaders() {
+    const saved = localStorage.getItem('manual_session');
+    let token = SUPABASE_ANON_KEY;
+    
+    if (saved) {
+      try {
+        const session = JSON.parse(saved);
+        // Check if session exists and has an access token
+        if (session?.session?.access_token) {
+          token = session.session.access_token;
+        } else if (session?.access_token) {
+          token = session.access_token;
+        }
+      } catch (e) {
+        console.warn('supabaseClient: Failed to parse manual session');
+      }
+    }
+    
+    return {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+  },
+
+  // Global fetch wrapper with automatic error handling for 401/expired JWT
+  async safeFetch(url, options = {}) {
+    const headers = this.getHeaders();
+    const mergedOptions = {
+      ...options,
+      headers: { ...headers, ...options.headers }
+    };
+
+    try {
+      const response = await fetch(url, mergedOptions);
+      
+      if (response.status === 401) {
+        console.warn('supabaseClient: 401 Unauthorized detected. Session might be expired.');
+        // If we get a 401, the token is definitely bad. Clear it.
+        if (localStorage.getItem('manual_session')) {
+          localStorage.removeItem('manual_session');
+          // Dispatch event to notify the app to logout
+          window.dispatchEvent(new CustomEvent('supabase-unauthorized'));
+        }
+      }
+      
+      return response;
+    } catch (err) {
+      throw err;
+    }
+  }
+};
+
 // Database table names
 export const TABLES = {
   USERS: 'users',
