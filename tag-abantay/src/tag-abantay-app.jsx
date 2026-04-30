@@ -2390,33 +2390,48 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText 
   if (!isOpen) return null;
 
   const colors = {
-    info: 'bg-cyan-500 hover:bg-cyan-400 text-white',
-    warning: 'bg-orange-500 hover:bg-orange-400 text-white',
-    danger: 'bg-red-500 hover:bg-red-400 text-white'
+    info: 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-lg shadow-cyan-500/20',
+    warning: 'bg-orange-500 hover:bg-orange-400 text-white shadow-lg shadow-orange-500/20',
+    danger: 'bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-500/20'
+  };
+
+  const iconColors = {
+    info: 'bg-cyan-500/20 text-cyan-500',
+    warning: 'bg-orange-500/20 text-orange-500',
+    danger: 'bg-red-500/20 text-red-500'
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-slideUp">
-        <div className="p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className={`p-2 rounded-lg ${type === 'warning' ? 'bg-orange-500/20 text-orange-500' : type === 'danger' ? 'bg-red-500/20 text-red-500' : 'bg-cyan-500/20 text-cyan-500'}`}>
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-bold text-white">{title}</h3>
+    <div 
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
+      style={{ zIndex: 9999 }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-8 text-center">
+          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${iconColors[type]}`}>
+            <AlertTriangle className="w-8 h-8" />
           </div>
-          <p className="text-gray-300 leading-relaxed">{message}</p>
+          <h3 className="text-2xl font-bold text-white mb-3">{title}</h3>
+          <p className="text-gray-300 text-lg leading-relaxed">{message}</p>
         </div>
-        <div className="flex bg-slate-900/50 p-4 gap-3">
+        
+        <div className="flex bg-slate-900/50 p-6 gap-4">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-all"
+            className="flex-1 px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-all border border-slate-600"
           >
             {cancelText}
           </button>
           <button
-            onClick={() => { onConfirm(); onClose(); }}
-            className={`flex-1 px-4 py-3 font-semibold rounded-xl transition-all ${colors[type]}`}
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+            className={`flex-1 px-6 py-4 font-bold rounded-xl transition-all ${colors[type]}`}
           >
             {confirmText}
           </button>
