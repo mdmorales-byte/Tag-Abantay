@@ -2385,6 +2385,47 @@ function CheckInRow({ name, status, statusColor, location, time }) {
   );
 }
 
+// Custom Modal Component for Confirmation
+function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'info' }) {
+  if (!isOpen) return null;
+
+  const colors = {
+    info: 'bg-cyan-500 hover:bg-cyan-400 text-white',
+    warning: 'bg-orange-500 hover:bg-orange-400 text-white',
+    danger: 'bg-red-500 hover:bg-red-400 text-white'
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-slideUp">
+        <div className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className={`p-2 rounded-lg ${type === 'warning' ? 'bg-orange-500/20 text-orange-500' : type === 'danger' ? 'bg-red-500/20 text-red-500' : 'bg-cyan-500/20 text-cyan-500'}`}>
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-bold text-white">{title}</h3>
+          </div>
+          <p className="text-gray-300 leading-relaxed">{message}</p>
+        </div>
+        <div className="flex bg-slate-900/50 p-4 gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-all"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={() => { onConfirm(); onClose(); }}
+            className={`flex-1 px-4 py-3 font-semibold rounded-xl transition-all ${colors[type]}`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Admin Alerts Component
 function AdminAlerts() {
   const [alerts, setAlerts] = useState([]);
@@ -2396,10 +2437,20 @@ function AdminAlerts() {
     typhoon_name: '',
     signal_level: 1,
     description: '',
-    location: 'Naga City, Camarines Sur'
+    location: 'Naga City, Camarines Sur',
+    is_active: true
   });
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    onConfirm: () => {},
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   useEffect(() => {
     let channel = null;
@@ -2447,25 +2498,50 @@ function AdminAlerts() {
     setLoading(false);
   };
 
+  const showConfirm = (title, message, onConfirm, type = 'info') => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm,
+      type
+    });
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
-    setSaving(true);
+    setSuccessMessage('');
     setFormError('');
 
-    const result = await alertService.createAlert(formData);
-    
-    if (result.data) {
-      setAlerts(prev => [result.data, ...prev]);
-      setFormData({
-        typhoon_name: '',
-        signal_level: 1,
-        description: '',
-        location: 'Naga City, Camarines Sur'
-      });
+    const proceed = async () => {
+      setSaving(true);
+      const result = await alertService.createAlert(formData);
+      if (result.data) {
+        setFormData({
+          typhoon_name: '',
+          signal_level: 1,
+          description: '',
+          location: 'Naga City, Camarines Sur',
+          is_active: true
+        });
+        setSuccessMessage('Alert broadcasted successfully!');
+        loadAlerts();
+      } else {
+        setFormError('Failed to create alert');
+      }
+      setSaving(false);
+    };
+
+    if (formData.is_active && alerts.some(a => a.is_active)) {
+      showConfirm(
+        'New Active Alert',
+        'Creating a new active alert will deactivate all other active alerts. Continue?',
+        proceed,
+        'warning'
+      );
     } else {
-      setFormError('Failed to create alert');
+      proceed();
     }
-    setSaving(false);
   };
 
   const handleUpdate = async (e) => {
@@ -2474,7 +2550,6 @@ function AdminAlerts() {
     setFormError('');
 
     const result = await alertService.updateAlert(editingId, formData);
-    
     if (result.data) {
       setAlerts(prev => prev.map(a => a.id === editingId ? result.data : a));
       setIsEditing(false);
@@ -2483,8 +2558,10 @@ function AdminAlerts() {
         typhoon_name: '',
         signal_level: 1,
         description: '',
-        location: 'Naga City, Camarines Sur'
+        location: 'Naga City, Camarines Sur',
+        is_active: true
       });
+      setSuccessMessage('Alert updated successfully');
     } else {
       setFormError('Failed to update alert');
     }
@@ -2492,54 +2569,64 @@ function AdminAlerts() {
   };
 
   const handleDeactivate = async (id) => {
-    if (!confirm('Are you sure you want to deactivate this alert?')) return;
-    
-    setSuccessMessage('');
-    setFormError('');
-    
-    const result = await alertService.deactivateAlert(id);
-    if (result.data || result.error === null) {
-      // Update local state
-      setAlerts(prev => prev.map(a => a.id === id ? { ...a, is_active: false } : a));
-      setSuccessMessage('Alert deactivated successfully');
-      setTimeout(() => setSuccessMessage(''), 3000);
-      // Force reload from server to ensure sync
-      setTimeout(() => loadAlerts(), 1000);
-    } else {
-      setFormError('Failed to deactivate alert');
-    }
+    showConfirm(
+      'Deactivate Alert',
+      'Are you sure you want to deactivate this alert?',
+      async () => {
+        const result = await alertService.deactivateAlert(id);
+        if (result.data || result.error === null) {
+          setAlerts(prev => prev.map(a => a.id === id ? { ...a, is_active: false } : a));
+          setSuccessMessage('Alert deactivated successfully');
+          setTimeout(() => setSuccessMessage(''), 3000);
+          loadAlerts();
+        } else {
+          setFormError('Failed to deactivate alert');
+        }
+      },
+      'danger'
+    );
   };
 
   const handleReactivate = async (id) => {
-    if (!confirm('Reactivating this alert will deactivate all other active alerts. Continue?')) return;
-    
-    setSuccessMessage('');
-    setFormError('');
-    
-    const result = await alertService.reactivateAlert(id);
-    if (result.data || result.error === null) {
-      setSuccessMessage('Alert reactivated successfully');
-      setTimeout(() => setSuccessMessage(''), 3000);
-      loadAlerts();
-    } else {
-      setFormError('Failed to reactivate alert');
-    }
+    const proceed = async () => {
+      setSuccessMessage('');
+      setFormError('');
+      const result = await alertService.reactivateAlert(id);
+      if (result.data || result.error === null) {
+        setSuccessMessage('Alert reactivated successfully');
+        setTimeout(() => setSuccessMessage(''), 3000);
+        loadAlerts();
+      } else {
+        setFormError('Failed to reactivate alert');
+      }
+    };
+
+    showConfirm(
+      'Reactivate Alert',
+      'Reactivating this alert will deactivate all other active alerts. Continue?',
+      proceed,
+      'warning'
+    );
   };
 
   const handleDeleteAlert = async (id) => {
-    if (!confirm('Are you sure you want to delete this alert? This cannot be undone.')) return;
-    
-    setSuccessMessage('');
-    setFormError('');
-    
-    const result = await alertService.deleteAlert(id);
-    if (result.success || result.error === null) {
-      setSuccessMessage('Alert deleted successfully');
-      setTimeout(() => setSuccessMessage(''), 3000);
-      loadAlerts();
-    } else {
-      setFormError('Failed to delete alert');
-    }
+    showConfirm(
+      'Delete Alert',
+      'Are you sure you want to delete this alert? This cannot be undone.',
+      async () => {
+        setSuccessMessage('');
+        setFormError('');
+        const result = await alertService.deleteAlert(id);
+        if (result.success || result.error === null) {
+          setSuccessMessage('Alert deleted successfully');
+          setTimeout(() => setSuccessMessage(''), 3000);
+          loadAlerts();
+        } else {
+          setFormError('Failed to delete alert');
+        }
+      },
+      'danger'
+    );
   };
 
   const handleEdit = (alert) => {
