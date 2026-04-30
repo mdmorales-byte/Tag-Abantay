@@ -2390,9 +2390,9 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText 
   if (!isOpen) return null;
 
   const colors = {
-    info: 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-lg shadow-cyan-500/20',
-    warning: 'bg-orange-500 hover:bg-orange-400 text-white shadow-lg shadow-orange-500/20',
-    danger: 'bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-500/20'
+    info: 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-lg',
+    warning: 'bg-orange-500 hover:bg-orange-400 text-white shadow-lg',
+    danger: 'bg-red-500 hover:bg-red-400 text-white shadow-lg'
   };
 
   const iconColors = {
@@ -2403,26 +2403,33 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText 
 
   return (
     <div 
-      className="fixed inset-0 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
-      style={{ zIndex: 9999 }}
+      className="fixed inset-0 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl" 
+      style={{ 
+        zIndex: 999999,
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0
+      }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div 
-        className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+        className="bg-slate-900 border-2 border-slate-700 w-full max-w-sm rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-8 text-center">
-          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${iconColors[type]}`}>
+          <div className={`mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-6 ${iconColors[type]} rotate-3`}>
             <AlertTriangle className="w-8 h-8" />
           </div>
-          <h3 className="text-2xl font-bold text-white mb-3">{title}</h3>
-          <p className="text-gray-300 text-lg leading-relaxed">{message}</p>
+          <h3 className="text-2xl font-black text-white mb-3 tracking-tight">{title}</h3>
+          <p className="text-slate-400 text-base leading-relaxed">{message}</p>
         </div>
         
-        <div className="flex bg-slate-900/50 p-6 gap-4">
+        <div className="grid grid-cols-2 gap-px bg-slate-800 border-t border-slate-700">
           <button
             onClick={onClose}
-            className="flex-1 px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-all border border-slate-600"
+            className="px-6 py-5 bg-slate-900 hover:bg-slate-800 text-slate-400 font-bold text-sm uppercase tracking-widest transition-all"
           >
             {cancelText}
           </button>
@@ -2431,7 +2438,7 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText 
               onConfirm();
               onClose();
             }}
-            className={`flex-1 px-6 py-4 font-bold rounded-xl transition-all ${colors[type]}`}
+            className={`px-6 py-5 ${colors[type]} font-bold text-sm uppercase tracking-widest transition-all border-l border-slate-700`}
           >
             {confirmText}
           </button>
