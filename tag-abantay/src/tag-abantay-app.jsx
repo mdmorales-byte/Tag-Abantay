@@ -2455,13 +2455,18 @@ function AdminAlerts() {
     const result = await alertService.createAlert(formData);
     
     if (result.data) {
-      setAlerts(prev => [result.data, ...prev]);
+      // SUCCESS: Alert created. 
+      // We DO NOT call setAlerts(prev => [result.data, ...prev]) here anymore
+      // because the realtime listener (line 2412) will automatically add it 
+      // when it detects the database change.
+      
       setFormData({
         typhoon_name: '',
         signal_level: 1,
         description: '',
         location: 'Naga City, Camarines Sur'
       });
+      setSuccessMessage('Alert broadcasted successfully!');
     } else {
       setFormError('Failed to create alert');
     }
