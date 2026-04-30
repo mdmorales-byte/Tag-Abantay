@@ -41,7 +41,7 @@ export default function TagAbantayApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Use custom hooks
-  const { user, isAuthenticated, isAdmin, signIn, signUp, signOut, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, isAdmin, signIn, signUp, sendMagicLink, signOut, loading: authLoading } = useAuth();
   const { currentAlert, alertInfo, isActive } = useAlerts();
   const { safetyStats, submitCheckIn, reloadStats } = useCheckIns(user?.id);
 
@@ -134,7 +134,8 @@ export default function TagAbantayApp() {
         {currentPage === 'login' && !isAuthenticated && (
           <LoginPage 
             handleLogin={handleLogin} 
-            handleSignUp={signUp} 
+            handleSignUp={signUp}
+            handleMagicLink={sendMagicLink}
             setCurrentPage={setCurrentPage} 
           />
         )}
@@ -1064,11 +1065,12 @@ function EvacuationCenter({ name, capacity, distance, status }) {
 }
 
 // Login Page
-function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
+function LoginPage({ handleLogin, handleSignUp, handleMagicLink, setCurrentPage }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isMagicLink, setIsMagicLink] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1090,7 +1092,20 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
     setLoading(true);
     
     try {
-      if (isSignUp) {
+      if (isMagicLink) {
+        if (!email.endsWith('@adnu.edu.ph')) {
+          setError('Only AdNU emails are allowed (@adnu.edu.ph)');
+          setLoading(false);
+          return;
+        }
+        const result = await handleMagicLink(email);
+        if (result.error) {
+          setError(result.error.message || 'Failed to send magic link.');
+        } else {
+          setSuccess('Magic Link sent! Please check your AdNU inbox to login instantly.');
+          setEmail('');
+        }
+      } else if (isSignUp) {
         if (!fullName.trim()) {
           setError('Please enter your full name');
           setLoading(false);
@@ -1102,7 +1117,6 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           setFullName('');
           setEmail('');
           setPassword('');
-          // After 5 seconds, switch to login
           setTimeout(() => setIsSignUp(false), 5000);
         } else {
           setError(result.error?.message || 'Sign up failed.');
@@ -1129,25 +1143,27 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
             <img src="https://i.imgur.com/SPc6uhg.png" alt="AdNU Logo" className="relative w-20 h-20 mx-auto rounded-full object-cover border-2 border-white/10" />
           </div>
           <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">
-            {isSignUp ? 'Join Tag-Abantay' : 'Welcome Back'}
+            {isMagicLink ? 'Instant Access' : isSignUp ? 'Join Tag-Abantay' : 'AdNU Login'}
           </h1>
           <p className="text-slate-400 font-medium">
-            {isSignUp 
-              ? 'Safety Registration for AdNU' 
-              : 'Sign in to your safety portal'}
+            {isMagicLink 
+              ? 'Receive a secure login link via email'
+              : isSignUp 
+                ? 'Safety Registration for AdNU' 
+                : 'Sign in to your safety portal'}
           </p>
         </div>
 
         {/* Tab Switcher */}
         <div className="flex bg-slate-900/50 backdrop-blur-sm rounded-2xl p-1.5 mb-8 border border-white/5">
           <button
-            onClick={() => { setIsSignUp(false); setError(''); setSuccess(''); }}
-            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${!isSignUp ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'}`}
+            onClick={() => { setIsSignUp(false); setIsMagicLink(false); setError(''); setSuccess(''); }}
+            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${!isSignUp && !isMagicLink ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Sign In
           </button>
           <button
-            onClick={() => { setIsSignUp(true); setError(''); setSuccess(''); }}
+            onClick={() => { setIsSignUp(true); setIsMagicLink(false); setError(''); setSuccess(''); }}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${isSignUp ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Register
@@ -1203,37 +1219,39 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
-              Secure Password
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
-              >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
+          {!isMagicLink && (
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
+                Secure Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              {isSignUp && (
+                <p className="mt-2 text-[10px] text-slate-500 font-medium ml-1">
+                  MUST BE AT LEAST 6 CHARACTERS
+                </p>
+              )}
             </div>
-            {isSignUp && (
-              <p className="mt-2 text-[10px] text-slate-500 font-medium ml-1">
-                MUST BE AT LEAST 6 CHARACTERS
-              </p>
-            )}
-          </div>
+          )}
 
           <button
             type="submit"
@@ -1246,15 +1264,24 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
                 Processing...
               </span>
             ) : (
-              isSignUp ? 'Create My Account' : 'Sign Into Portal'
+              isMagicLink ? 'Send Login Link' : isSignUp ? 'Create My Account' : 'Sign Into Portal'
             )}
           </button>
         </form>
 
-        <div className="mt-10 text-center">
+        <div className="mt-8 text-center space-y-4">
+          {!isSignUp && (
+            <button
+              onClick={() => { setIsMagicLink(!isMagicLink); setError(''); setSuccess(''); }}
+              className="block w-full text-xs font-bold text-cyan-400 hover:text-cyan-300 uppercase tracking-widest transition-colors"
+            >
+              {isMagicLink ? '← Back to Password Login' : 'Login with Magic Link instead?'}
+            </button>
+          )}
+          
           <button
             onClick={() => setCurrentPage('home')}
-            className="text-xs font-bold text-slate-500 hover:text-cyan-400 uppercase tracking-widest transition-colors"
+            className="block w-full text-xs font-bold text-slate-500 hover:text-cyan-400 uppercase tracking-widest transition-colors"
           >
             ← Back to Home
           </button>

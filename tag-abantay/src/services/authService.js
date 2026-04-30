@@ -286,6 +286,23 @@ export const authService = {
   },
 
   /**
+   * Send a Magic Link for passwordless login
+   */
+  async sendMagicLink(email) {
+    try {
+      const { data, error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: window.location.origin,
+        }
+      })
+      return { data, error }
+    } catch (err) {
+      return { data: null, error: err }
+    }
+  },
+
+  /**
    * Update password
    */
   async updatePassword(newPassword) {
