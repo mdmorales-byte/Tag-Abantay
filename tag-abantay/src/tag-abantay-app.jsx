@@ -1743,6 +1743,11 @@ function AdminDashboard({ safetyStats: initialStats }) {
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [safetyStats, setSafetyStats] = useState(initialStats || { safe: 0, needsHelp: 0, unreachable: 0, notReported: 0 });
+  
+  // Pagination & Search States
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPageNum] = useState(1);
+  const itemsPerPage = 10;
 
   // Master Data Loader
   useEffect(() => {
@@ -2004,36 +2009,85 @@ function AdminDashboard({ safetyStats: initialStats }) {
 
           {/* Recent Check-Ins */}
           <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
-            <h2 className="text-2xl font-bold text-white mb-6">Recent Check-Ins</h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <h2 className="text-2xl font-bold text-white">Recent Check-Ins</h2>
+              
+              {/* Search Bar */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search student..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPageNum(1); // Reset to page 1 on search
+                  }}
+                  className="w-full md:w-64 px-10 py-2 bg-slate-900/50 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
+                />
+                <Users className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               {loading ? (
                 <p className="text-gray-400">Loading check-ins...</p>
               ) : checkIns.length === 0 ? (
                 <p className="text-gray-400">No check-ins yet. Data will appear here when students submit their status.</p>
               ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-700">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Name</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Location</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {checkIns.slice(0, 10).map((checkIn, index) => (
-                      <CheckInRow
-                        key={index}
-                        name={checkIn.users?.full_name || checkIn.users?.email || 'Unknown'}
-                        status={getStatusDisplay(checkIn.status)}
-                        statusColor={getStatusColor(checkIn.status)}
-                        location={checkIn.location || 'Not specified'}
-                        time={formatTimeAgo(checkIn.created_at)}
-                        notes={checkIn.notes}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-700">
+                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Name</th>
+                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
+                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Location</th>
+                        <th className="text-left py-3 px-4 text-gray-400 font-medium">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checkIns
+                        .filter(ci => {
+                          const name = (ci.users?.full_name || ci.users?.email || '').toLowerCase();
+                          return name.includes(searchTerm.toLowerCase());
+                        })
+                        .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                        .map((checkIn, index) => (
+                          <CheckInRow
+                            key={index}
+                            name={checkIn.users?.full_name || checkIn.users?.email || 'Unknown'}
+                            status={getStatusDisplay(checkIn.status)}
+                            statusColor={getStatusColor(checkIn.status)}
+                            location={checkIn.location || 'Not specified'}
+                            time={formatTimeAgo(checkIn.created_at)}
+                            notes={checkIn.notes}
+                          />
+                        ))}
+                    </tbody>
+                  </table>
+
+                  {/* Pagination Controls */}
+                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-700">
+                    <p className="text-sm text-gray-500">
+                      Showing {Math.min(checkIns.length, (currentPage - 1) * itemsPerPage + 1)} to {Math.min(checkIns.length, currentPage * itemsPerPage)} of {checkIns.length} check-ins
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setCurrentPageNum(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPageNum(prev => Math.min(Math.ceil(checkIns.length / itemsPerPage), prev + 1))}
+                        disabled={currentPage >= Math.ceil(checkIns.length / itemsPerPage)}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
