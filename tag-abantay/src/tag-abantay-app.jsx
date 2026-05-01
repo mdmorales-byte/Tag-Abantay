@@ -3062,9 +3062,79 @@ function AdminEvacuation() {
   const loadRoutes = async () => {
     const result = await evacuationService.getEvacuationRoutes();
     if (result.data) {
-      setRoutes(result.data);
+      // Migrate routes missing coordinates based on name patterns
+      const migratedRoutes = await migrateRouteCoordinates(result.data);
+      setRoutes(migratedRoutes);
     }
     setLoading(false);
+  };
+
+  // Migration: Set approximate coordinates for routes based on name/description
+  const migrateRouteCoordinates = async (routes) => {
+    // Known building coordinates around Ateneo de Naga University
+    const knownLocations = {
+      'alingal': { lat: 13.6315, lng: 123.1862 },
+      'jesuit': { lat: 13.6295, lng: 123.1875 },
+      'madrigal': { lat: 13.6308, lng: 123.1868 },
+      'admin': { lat: 13.6302, lng: 123.1855 },
+      'xavier': { lat: 13.6310, lng: 123.1845 },
+      'bellarmine': { lat: 13.6318, lng: 123.1850 },
+      'arrupe': { lat: 13.6325, lng: 123.1870 },
+      'faculty': { lat: 13.6290, lng: 123.1860 },
+      'library': { lat: 13.6285, lng: 123.1840 },
+      'chapel': { lat: 13.6298, lng: 123.1880 },
+      'covered court': { lat: 13.6320, lng: 123.1848 },
+      'gym': { lat: 13.6322, lng: 123.1852 },
+      'main': { lat: 13.6305, lng: 123.1858 },
+      'basketball': { lat: 13.6312, lng: 123.1842 },
+      'parking': { lat: 13.6288, lng: 123.1872 },
+      'bonaocan': { lat: 13.6300, lng: 123.1838 },
+      'burns': { lat: 13.6295, lng: 123.1865 },
+      'o\'brien': { lat: 13.6288, lng: 123.1835 }
+    };
+
+    const updatedRoutes = [];
+    for (const route of routes) {
+      // Skip if already has coordinates
+      if (route.latitude && route.longitude) {
+        updatedRoutes.push(route);
+        continue;
+      }
+
+      // Try to match by name or description
+      const searchText = (route.name + ' ' + route.description).toLowerCase();
+      let matchedCoords = null;
+
+      for (const [keyword, coords] of Object.entries(knownLocations)) {
+        if (searchText.includes(keyword)) {
+          matchedCoords = coords;
+          break;
+        }
+      }
+
+      // If no match, use campus location with small offset
+      if (!matchedCoords) {
+        matchedCoords = {
+          lat: CAMPUS_LOCATION[0] + (Math.random() - 0.5) * 0.002,
+          lng: CAMPUS_LOCATION[1] + (Math.random() - 0.5) * 0.002
+        };
+      }
+
+      // Update route in database
+      const updateResult = await evacuationService.updateEvacuationRoute(route.id, {
+        ...route,
+        latitude: matchedCoords.lat,
+        longitude: matchedCoords.lng
+      });
+
+      if (updateResult.data) {
+        updatedRoutes.push(updateResult.data);
+      } else {
+        updatedRoutes.push({ ...route, latitude: matchedCoords.lat, longitude: matchedCoords.lng });
+      }
+    }
+
+    return updatedRoutes;
   };
 
   const handleCreate = async (e) => {
