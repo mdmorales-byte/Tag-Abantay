@@ -3212,10 +3212,17 @@ function AdminEvacuation() {
       return;
     }
 
+    // Validate occupancy doesn't exceed capacity
+    let occupancy = parseInt(formData.current_occupancy) || 0;
+    const maxCapacity = parseInt(formData.capacity) || 0;
+    if (occupancy > maxCapacity) {
+      occupancy = maxCapacity;
+    }
+
     const result = await evacuationService.createEvacuationRoute({
       ...formData,
-      capacity: parseInt(formData.capacity) || 0,
-      current_occupancy: parseInt(formData.current_occupancy) || 0,
+      capacity: maxCapacity,
+      current_occupancy: occupancy,
       distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
       latitude: parseFloat(formData.latitude),
       longitude: parseFloat(formData.longitude)
@@ -3243,10 +3250,17 @@ function AdminEvacuation() {
     setSaving(true);
     setFormError('');
 
+    // Validate occupancy doesn't exceed capacity
+    let occupancy = parseInt(formData.current_occupancy) || 0;
+    const maxCapacity = parseInt(formData.capacity) || 0;
+    if (occupancy > maxCapacity) {
+      occupancy = maxCapacity;
+    }
+
     const result = await evacuationService.updateEvacuationRoute(editingId, {
       ...formData,
-      capacity: parseInt(formData.capacity) || 0,
-      current_occupancy: parseInt(formData.current_occupancy) || 0,
+      capacity: maxCapacity,
+      current_occupancy: occupancy,
       distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
       latitude: parseFloat(formData.latitude),
       longitude: parseFloat(formData.longitude)
@@ -3363,10 +3377,26 @@ function AdminEvacuation() {
               <input
                 type="number"
                 value={formData.current_occupancy || ''}
-                onChange={(e) => setFormData({ ...formData, current_occupancy: e.target.value })}
+                onChange={(e) => {
+                  let value = parseInt(e.target.value) || 0;
+                  const maxCapacity = parseInt(formData.capacity) || 0;
+                  // Prevent occupancy from exceeding capacity
+                  if (value > maxCapacity) {
+                    value = maxCapacity;
+                  }
+                  if (value < 0) {
+                    value = 0;
+                  }
+                  setFormData({ ...formData, current_occupancy: value.toString() });
+                }}
                 placeholder="e.g., 0"
+                min="0"
+                max={formData.capacity || 0}
                 className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
               />
+              {parseInt(formData.current_occupancy) > parseInt(formData.capacity) && (
+                <p className="text-red-400 text-xs mt-1">Occupancy cannot exceed capacity ({formData.capacity})</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
