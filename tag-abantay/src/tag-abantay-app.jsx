@@ -1329,7 +1329,53 @@ function StudentDashboard({ safetyStats, setCurrentPage }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [latestCheckIn, setLatestCheckIn] = useState(null);
+  const [loadingCheckIn, setLoadingCheckIn] = useState(true);
   const { user, updatePassword } = useAuth();
+
+  useEffect(() => {
+    if (user?.id) {
+      loadMyLatestCheckIn();
+      // Poll for updates every 10 seconds
+      const interval = setInterval(loadMyLatestCheckIn, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id]);
+
+  const loadMyLatestCheckIn = async () => {
+    try {
+      const result = await checkInService.getLatestCheckIn(user.id);
+      if (result.data) {
+        setLatestCheckIn(result.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load latest check-in:', err);
+    } finally {
+      setLoadingCheckIn(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    const s = status?.toLowerCase();
+    if (s === 'safe') return 'bg-green-500';
+    if (s === 'need_help' || s === 'needs_help') return 'bg-red-500';
+    if (s === 'unreachable') return 'bg-orange-500';
+    return 'bg-gray-500';
+  };
+
+  const getStatusText = (status) => {
+    const s = status?.toLowerCase();
+    if (s === 'safe') return 'Safe';
+    if (s === 'need_help' || s === 'needs_help') return 'Needs Help';
+    if (s === 'unreachable') return 'Unreachable';
+    return status || 'Unknown';
+  };
+
+  const formatTime = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const handleSetPassword = async (e) => {
     e.preventDefault();
@@ -1473,8 +1519,56 @@ function StudentDashboard({ safetyStats, setCurrentPage }) {
 
       {/* My Status */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
-        <h2 className="text-2xl font-bold text-white mb-4">My Safety Status</h2>
-        <p className="text-gray-400">Submit a check-in to update your status</p>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-white">My Safety Status</h2>
+          <button 
+            onClick={() => setCurrentPage('checkin')}
+            className="text-sm text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1"
+          >
+            Update Status <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        
+        {loadingCheckIn ? (
+          <p className="text-gray-400 animate-pulse">Loading your status...</p>
+        ) : latestCheckIn ? (
+          <div className="flex flex-col md:flex-row md:items-center gap-6 bg-slate-900/40 p-6 rounded-2xl border border-white/5">
+            <div className={`w-16 h-16 rounded-2xl ${getStatusColor(latestCheckIn.status)} flex items-center justify-center shadow-lg`}>
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-white font-bold text-lg">{getStatusText(latestCheckIn.status)}</span>
+                <span className="px-3 py-0.5 bg-white/10 rounded-full text-[10px] text-gray-400 uppercase tracking-tighter font-bold">Latest Update</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                <div className="flex items-center gap-2 text-gray-400">
+                  <MapPin className="w-4 h-4 text-cyan-500/70" />
+                  <span>{latestCheckIn.location || 'Location not specified'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-400">
+                  <Bell className="w-4 h-4 text-cyan-500/70" />
+                  <span>{formatTime(latestCheckIn.created_at)}</span>
+                </div>
+                {latestCheckIn.notes && (
+                  <div className="col-span-full mt-2 p-3 bg-white/5 rounded-lg border border-white/5 italic text-gray-300">
+                    "{latestCheckIn.notes}"
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-gray-400 mb-4">You haven't submitted a safety status yet.</p>
+            <button 
+              onClick={() => setCurrentPage('checkin')}
+              className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-500/20"
+            >
+              Check-In Now
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
