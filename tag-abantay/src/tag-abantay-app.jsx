@@ -1195,7 +1195,12 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           role: userRole
         });
         if (result.success) {
-          setSuccess('Registration successful! Please check your email for a confirmation link before signing in.');
+          // Show warning if email confirmation failed, but account was created
+          if (result.warning) {
+            setSuccess(result.warning);
+          } else {
+            setSuccess('Registration successful! Please check your email for a confirmation link before signing in.');
+          }
           setFullName('');
           setEmail('');
           setPassword('');

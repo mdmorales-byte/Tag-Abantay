@@ -88,6 +88,10 @@ export const useAuth = () => {
       const result = await authService.signUp(email, password, fullName)
       
       if (result.error) {
+        // Handle email confirmation error as success - user was created
+        if (result.error.isEmailError) {
+          return { success: true, data: result.data, warning: result.error.message }
+        }
         throw result.error
       }
 

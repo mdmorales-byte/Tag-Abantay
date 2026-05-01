@@ -143,7 +143,34 @@ export const authService = {
         }
       })
 
-      if (error) throw error
+      // Handle email confirmation errors gracefully - user may still be created
+      if (error) {
+        // Check if user was created despite email error
+        if (data?.user && error.message?.includes('confirmation email')) {
+          console.warn('User created but confirmation email failed:', error.message);
+          
+          // Create profile for the user
+          try {
+            await this.createUserProfile(data.user.id, {
+              email: data.user.email,
+              full_name: userMetadata.full_name || email.split('@')[0],
+              role: userMetadata.role || 'student'
+            });
+          } catch (profileErr) {
+            console.error("Profile creation error:", profileErr);
+          }
+          
+          // Return success with warning - user can log in directly
+          return { 
+            data, 
+            error: { 
+              message: 'Account created! You can sign in now. (Email confirmation may be delayed)',
+              isEmailError: true 
+            } 
+          }
+        }
+        throw error
+      }
 
       // If user is created and we have a session (auto-confirm is on)
       // or even if not, we should attempt to create the profile row
