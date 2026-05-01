@@ -11,7 +11,11 @@ export const authService = {
   async signIn(email, password) {
     console.log('AUTH_SERVICE: Starting signIn for', email);
     try {
-      // Direct fetch to Supabase Auth API
+      const emailLower = email.toLowerCase();
+      // Only allow @gbox.adnu.edu.ph
+      if (!emailLower.endsWith('@gbox.adnu.edu.ph') && !emailLower.startsWith('admin@')) {
+        throw new Error('Only @gbox.adnu.edu.ph email addresses are allowed.');
+      }
       console.log('AUTH_SERVICE: Sending fetch request to', `${SUPABASE_URL}/auth/v1/token`);
       const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: 'POST',
@@ -126,8 +130,8 @@ export const authService = {
   async signUp(email, password, userMetadata) {
     try {
       const emailLower = email.toLowerCase();
-      if (!emailLower.endsWith('@adnu.edu.ph') && !emailLower.endsWith('@gbox.adnu.edu.ph')) {
-        throw new Error('Only AdNU email addresses are allowed (@adnu.edu.ph or @gbox.adnu.edu.ph)')
+      if (!emailLower.endsWith('@gbox.adnu.edu.ph')) {
+        throw new Error('Only AdNU GBox email addresses are allowed (@gbox.adnu.edu.ph)');
       }
 
       const { data, error } = await supabase.auth.signUp({
