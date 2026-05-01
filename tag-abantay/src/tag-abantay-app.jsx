@@ -277,12 +277,25 @@ function Navigation({ currentPage, setCurrentPage, isLoggedIn, user, handleLogou
                   Login with AdNU Account
                 </button>
               ) : (
-                <button
-                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
-                  className="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg"
-                >
-                  Logout
-                </button>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3 px-4 py-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                    <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
+                      <Users className="w-5 h-5 text-cyan-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white truncate max-w-[200px]">{user?.email}</p>
+                      <p className="text-xs text-cyan-400">
+                        {user?.email?.toLowerCase().includes('admin') ? 'System Administrator' : 'AdNU Student'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                    className="w-full px-6 py-3 bg-red-500 hover:bg-red-400 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    Logout
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1298,7 +1311,7 @@ function StudentDashboard({ safetyStats, setCurrentPage }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [updating, setUpdating] = useState(false);
-  const { updatePassword } = useAuth();
+  const { user, updatePassword } = useAuth();
 
   const handleSetPassword = async (e) => {
     e.preventDefault();
@@ -1326,6 +1339,18 @@ function StudentDashboard({ safetyStats, setCurrentPage }) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Mobile User Profile Header */}
+      <div className="md:hidden flex items-center space-x-3 mb-6 p-4 bg-slate-800/30 rounded-2xl border border-slate-700/50">
+        <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30 shadow-inner">
+          <Users className="w-6 h-6 text-cyan-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5">Logged in as</p>
+          <p className="text-sm font-bold text-white truncate">{user?.email}</p>
+          <p className="text-xs text-cyan-400 font-medium">AdNU Student</p>
+        </div>
+      </div>
+
       <h1 className="text-4xl font-bold text-white mb-8">Student Dashboard</h1>
 
       {/* Set Password Banner - only shown if not yet set */}
@@ -1593,6 +1618,7 @@ function StatusButton({ selected, onClick, color, label }) {
 
 // Admin Dashboard
 function AdminDashboard({ safetyStats: initialStats }) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [checkIns, setCheckIns] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -1719,6 +1745,18 @@ function AdminDashboard({ safetyStats: initialStats }) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Mobile User Profile Header */}
+      <div className="md:hidden flex items-center space-x-3 mb-6 p-4 bg-slate-800/30 rounded-2xl border border-slate-700/50">
+        <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30 shadow-inner">
+          <Shield className="w-6 h-6 text-cyan-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5">Logged in as</p>
+          <p className="text-sm font-bold text-white truncate">{user?.email}</p>
+          <p className="text-xs text-cyan-400 font-medium text-uppercase tracking-wider">System Administrator</p>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-bold text-white">Admin Dashboard</h1>
         <button className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-lg transition-all duration-200">
