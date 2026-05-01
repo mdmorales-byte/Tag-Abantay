@@ -1224,7 +1224,7 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@adnu.edu.ph"
+              placeholder="name@gbox.adnu.edu.ph"
               className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
               required
             />
@@ -1896,7 +1896,7 @@ function AdminRegistrationQR() {
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50 text-center">
         <h3 className="text-2xl font-bold text-white mb-2">Student Registration QR Code</h3>
         <p className="text-gray-400 mb-8 max-w-lg mx-auto">
-          Display this QR code around campus. Students can scan it to officially register for Tag-Abantay with their @adnu.edu.ph email.
+          Display this QR code around campus. Students can scan it to officially register for Tag-Abantay with their @gbox.adnu.edu.ph email.
         </p>
 
         <div className="bg-white p-6 rounded-2xl inline-block mb-8 shadow-2xl shadow-cyan-500/20 border-4 border-cyan-500">
@@ -1943,7 +1943,7 @@ function AdminRegistrationQR() {
           <ul className="text-sm text-gray-400 space-y-3">
             <li className="flex gap-2">
               <span className="text-cyan-400">•</span>
-              Only @adnu.edu.ph emails are allowed.
+              Only @gbox.adnu.edu.ph emails are allowed.
             </li>
             <li className="flex gap-2">
               <span className="text-cyan-400">•</span>
