@@ -929,13 +929,31 @@ function EvacuationMapPage() {
                       <div className="mt-4 pt-3 border-t border-gray-100">
                         <button
                           onClick={() => {
-                            const url = `https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`;
-                            window.open(url, '_blank');
+                            // Try to get user's current location for directions
+                            if (navigator.geolocation) {
+                              navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                  const userLat = position.coords.latitude;
+                                  const userLng = position.coords.longitude;
+                                  const url = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${coords[0]},${coords[1]}&travelmode=walking`;
+                                  window.open(url, '_blank');
+                                },
+                                () => {
+                                  // Fallback if location denied/unavailable - just open destination
+                                  const url = `https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}&travelmode=walking`;
+                                  window.open(url, '_blank');
+                                }
+                              );
+                            } else {
+                              // Geolocation not supported - just open destination
+                              const url = `https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}&travelmode=walking`;
+                              window.open(url, '_blank');
+                            }
                           }}
                           className="w-full py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
                         >
                           <MapPin className="w-3 h-3" />
-                          Open in Google Maps
+                          Get Directions
                         </button>
                       </div>
                     </div>
