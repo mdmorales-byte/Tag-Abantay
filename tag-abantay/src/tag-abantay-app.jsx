@@ -215,7 +215,13 @@ function Navigation({ currentPage, setCurrentPage, isLoggedIn, user, handleLogou
                   <div className="text-right">
                     <p className="text-sm text-white font-medium">{user?.email}</p>
                     <p className="text-xs text-cyan-300">
-                      {user?.email?.includes('admin') ? 'Administrator' : 'AdNU Student'}
+                      {user?.email?.toLowerCase().includes('admin') 
+                        ? 'Administrator' 
+                        : user?.role === 'faculty' 
+                          ? 'AdNU Faculty' 
+                          : user?.role === 'staff'
+                            ? 'AdNU Staff'
+                            : 'AdNU Student'}
                     </p>
                   </div>
                   <button
@@ -285,7 +291,13 @@ function Navigation({ currentPage, setCurrentPage, isLoggedIn, user, handleLogou
                     <div>
                       <p className="text-sm font-bold text-white truncate max-w-[200px]">{user?.email}</p>
                       <p className="text-xs text-cyan-400">
-                        {user?.email?.toLowerCase().includes('admin') ? 'System Administrator' : 'AdNU Student'}
+                        {user?.email?.toLowerCase().includes('admin') 
+                          ? 'System Administrator' 
+                          : user?.role === 'faculty' 
+                            ? 'AdNU Faculty' 
+                            : user?.role === 'staff'
+                              ? 'AdNU Staff'
+                              : 'AdNU Student'}
                       </p>
                     </div>
                   </div>
@@ -1347,7 +1359,9 @@ function StudentDashboard({ safetyStats, setCurrentPage }) {
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5">Logged in as</p>
           <p className="text-sm font-bold text-white truncate">{user?.email}</p>
-          <p className="text-xs text-cyan-400 font-medium">AdNU Student</p>
+          <p className="text-xs text-cyan-400 font-medium">
+            {user?.role === 'faculty' ? 'AdNU Faculty' : user?.role === 'staff' ? 'AdNU Staff' : 'AdNU Student'}
+          </p>
         </div>
       </div>
 
