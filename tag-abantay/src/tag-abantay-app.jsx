@@ -135,7 +135,13 @@ export default function TagAbantayApp() {
 
       {/* Main Content */}
       <main className="pt-20">
-        {currentPage === 'home' && <HomePage setCurrentPage={setCurrentPage} typhoonAlert={typhoonAlert} />}
+        {currentPage === 'home' && (
+          <HomePage 
+            setCurrentPage={setCurrentPage} 
+            typhoonAlert={typhoonAlert} 
+            isAuthenticated={isAuthenticated}
+          />
+        )}
         {currentPage === 'alerts' && <AlertsPage typhoonAlert={typhoonAlert} alertInfo={alertInfo} />}
         {currentPage === 'map' && <EvacuationMapPage />}
         {currentPage === 'login' && !isAuthenticated && (
@@ -344,7 +350,7 @@ function MobileNavButton({ onClick, children }) {
   );
 }
 
-function HomePage({ setCurrentPage, typhoonAlert }) {
+function HomePage({ setCurrentPage, typhoonAlert, isAuthenticated }) {
   const alertLevel = ALERT_LEVELS[typhoonAlert.level];
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
