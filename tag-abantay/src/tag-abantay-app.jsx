@@ -1538,7 +1538,7 @@ function CheckInPage({ submitCheckIn, user }) {
       setLocation('');
       setNotes('');
     } else {
-      setFeedback({ type: 'error', message: result.error?.message || 'Failed to submit check-in. Please try again.' });
+      setFeedback({ type: 'error', message: `Failed to submit check-in: ${result.error || 'Please try again.'}` });
     }
     
     setSubmitting(false);
@@ -1567,8 +1567,8 @@ function CheckInPage({ submitCheckIn, user }) {
                 label="Safe"
               />
               <StatusButton
-                selected={status === 'help'}
-                onClick={() => setStatus('help')}
+                selected={status === 'need_help'}
+                onClick={() => setStatus('need_help')}
                 color="bg-red-500"
                 label="Need Help"
               />
