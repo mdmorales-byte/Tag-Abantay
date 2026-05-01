@@ -938,6 +938,18 @@ function EvacuationMapPage() {
                         <p><strong>Distance:</strong> {parseFloat(route.distance_from_campus_km || 0).toFixed(1)} km from campus</p>
                         <p><strong>Status:</strong> <span className="text-green-600 font-semibold">Available</span></p>
                       </div>
+                      <div className="mt-4 pt-3 border-t border-gray-100">
+                        <button
+                          onClick={() => {
+                            const url = `https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`;
+                            window.open(url, '_blank');
+                          }}
+                          className="w-full py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          Open in Google Maps
+                        </button>
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
