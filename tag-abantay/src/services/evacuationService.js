@@ -83,6 +83,7 @@ export const evacuationService = {
         name: routeData.name,
         description: routeData.description,
         capacity: routeData.capacity,
+        current_occupancy: routeData.current_occupancy || 0,
         distance_from_campus_km: routeData.distance_from_campus_km,
         latitude: routeData.latitude,
         longitude: routeData.longitude,

@@ -924,7 +924,25 @@ function EvacuationMapPage() {
                       <div className="space-y-1 text-sm">
                         <p><strong>Capacity:</strong> {route.capacity} persons</p>
                         <p><strong>Distance:</strong> {parseFloat(route.distance_from_campus_km || 0).toFixed(1)} km from campus</p>
-                        <p><strong>Status:</strong> <span className="text-green-600 font-semibold">Available</span></p>
+                        {(() => {
+                          const occupied = route.current_occupancy || 0;
+                          const percentage = route.capacity > 0 ? (occupied / route.capacity) * 100 : 0;
+                          let statusText = "Available";
+                          let statusClass = "text-green-600";
+                          if (percentage >= 100) {
+                            statusText = "Full";
+                            statusClass = "text-red-600";
+                          } else if (percentage >= 80) {
+                            statusText = "Near Capacity";
+                            statusClass = "text-orange-600";
+                          }
+                          return (
+                            <>
+                              <p><strong>Occupied:</strong> {occupied}/{route.capacity}</p>
+                              <p><strong>Status:</strong> <span className={`font-semibold ${statusClass}`}>{statusText}</span></p>
+                            </>
+                          );
+                        })()}
                       </div>
                       <div className="mt-4 pt-3 border-t border-gray-100">
                         <button
@@ -1088,9 +1106,9 @@ function EvacuationMapPage() {
             <EvacuationCenter
               key={route.id}
               name={route.name}
-              capacity={`${route.capacity} persons`}
+              capacity={route.capacity}
+              occupied={route.current_occupancy || 0}
               distance={`${route.distance_from_campus_km} km`}
-              status="Available"
             />
           ))}
         </div>
@@ -1099,21 +1117,49 @@ function EvacuationMapPage() {
   );
 }
 
-function EvacuationCenter({ name, capacity, distance, status }) {
+function EvacuationCenter({ name, capacity, occupied, distance }) {
+  // Calculate status based on occupancy
+  const occupancyPercentage = capacity > 0 ? (occupied / capacity) * 100 : 0;
+  
+  let status = "Available";
+  let statusColor = "bg-green-500";
+  let borderColor = "hover:border-green-500/50";
+  
+  if (occupancyPercentage >= 100) {
+    status = "Full";
+    statusColor = "bg-red-500";
+    borderColor = "hover:border-red-500/50";
+  } else if (occupancyPercentage >= 80) {
+    status = "Near Capacity";
+    statusColor = "bg-orange-500";
+    borderColor = "hover:border-orange-500/50";
+  }
+  
   return (
-    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 hover:border-green-500/50 transition-all duration-300">
+    <div className={`bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 ${borderColor} transition-all duration-300`}>
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-lg font-bold text-white mb-1">{name}</h3>
           <p className="text-sm text-gray-400">{distance} from campus</p>
         </div>
-        <span className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
+        <span className={`px-3 py-1 ${statusColor} text-white text-xs font-semibold rounded-full`}>
           {status}
         </span>
       </div>
-      <div className="flex items-center space-x-2 text-sm text-gray-300">
-        <Users className="w-4 h-4" />
-        <span>Capacity: {capacity}</span>
+      <div className="space-y-2">
+        <div className="flex items-center space-x-2 text-sm text-gray-300">
+          <Users className="w-4 h-4" />
+          <span>Capacity: {capacity} persons</span>
+        </div>
+        <div className="flex items-center space-x-2 text-sm">
+          <div className="flex-1 bg-slate-700 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full ${occupancyPercentage >= 100 ? 'bg-red-500' : occupancyPercentage >= 80 ? 'bg-orange-500' : 'bg-green-500'}`}
+              style={{ width: `${Math.min(occupancyPercentage, 100)}%` }}
+            />
+          </div>
+          <span className="text-xs text-gray-400 w-16">{occupied}/{capacity}</span>
+        </div>
       </div>
     </div>
   );
@@ -3169,6 +3215,7 @@ function AdminEvacuation() {
     const result = await evacuationService.createEvacuationRoute({
       ...formData,
       capacity: parseInt(formData.capacity) || 0,
+      current_occupancy: parseInt(formData.current_occupancy) || 0,
       distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
       latitude: parseFloat(formData.latitude),
       longitude: parseFloat(formData.longitude)
@@ -3180,6 +3227,7 @@ function AdminEvacuation() {
         name: '',
         description: '',
         capacity: '',
+        current_occupancy: '',
         distance_from_campus_km: '',
         latitude: null,
         longitude: null
@@ -3198,6 +3246,7 @@ function AdminEvacuation() {
     const result = await evacuationService.updateEvacuationRoute(editingId, {
       ...formData,
       capacity: parseInt(formData.capacity) || 0,
+      current_occupancy: parseInt(formData.current_occupancy) || 0,
       distance_from_campus_km: parseFloat(formData.distance_from_campus_km) || 0,
       latitude: parseFloat(formData.latitude),
       longitude: parseFloat(formData.longitude)
@@ -3211,6 +3260,7 @@ function AdminEvacuation() {
         name: '',
         description: '',
         capacity: '',
+        current_occupancy: '',
         distance_from_campus_km: '',
         latitude: null,
         longitude: null
@@ -3237,6 +3287,7 @@ function AdminEvacuation() {
       name: route.name || '',
       description: route.description || '',
       capacity: route.capacity?.toString() || '',
+      current_occupancy: route.current_occupancy?.toString() || '',
       distance_from_campus_km: route.distance_from_campus_km?.toString() || '',
       latitude: route.latitude || null,
       longitude: route.longitude || null
@@ -3250,6 +3301,7 @@ function AdminEvacuation() {
       name: '',
       description: '',
       capacity: '',
+      current_occupancy: '',
       distance_from_campus_km: '',
       latitude: null,
       longitude: null
@@ -3295,7 +3347,7 @@ function AdminEvacuation() {
               className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
             />
           </div>
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Capacity</label>
               <input
@@ -3303,6 +3355,16 @@ function AdminEvacuation() {
                 value={formData.capacity}
                 onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
                 placeholder="e.g., 500"
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Current Occupancy</label>
+              <input
+                type="number"
+                value={formData.current_occupancy || ''}
+                onChange={(e) => setFormData({ ...formData, current_occupancy: e.target.value })}
+                placeholder="e.g., 0"
                 className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white"
               />
             </div>
