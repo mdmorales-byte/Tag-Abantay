@@ -2016,7 +2016,7 @@ function AdminDashboard({ safetyStats: initialStats }) {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search student..."
+                  placeholder="Search"
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
