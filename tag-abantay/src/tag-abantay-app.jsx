@@ -450,7 +450,7 @@ function HomePage({ setCurrentPage, typhoonAlert }) {
           icon={Shield}
           title="Safety Check-In"
           description="Report your safety status"
-          onClick={() => setCurrentPage('login')}
+          onClick={() => setCurrentPage(isAuthenticated ? 'checkin' : 'login')}
           color="bg-gradient-to-br from-cyan-500 to-blue-600"
         />
       </div>
