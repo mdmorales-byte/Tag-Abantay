@@ -746,56 +746,32 @@ function MapClickHandler({ onClick }) {
   return null;
 }
 
-// Calculate distance between two coordinates (Haversine formula)
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radius of Earth in kilometers
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  return distance;
-}
-
-function toRad(degrees) {
-  return degrees * (Math.PI / 180);
-}
-
-// Fix Leaflet default marker icon
-const campusIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+const campusIcon = L.divIcon({
+  className: 'custom-campus-marker',
+  html: '<div class="w-8 h-8 bg-red-600 rounded-full border-4 border-white shadow-lg flex items-center justify-center animate-pulse"><span class="text-white text-[10px] font-bold">AdNU</span></div>',
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -16]
 });
 
-const evacuationIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+const evacuationIcon = L.divIcon({
+  className: 'custom-evacuation-marker',
+  html: '<div class="w-8 h-8 bg-green-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center"><span class="text-white text-xs">📍</span></div>',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
 });
 
-const warningIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+const warningIcon = L.divIcon({
+  className: 'custom-warning-marker',
+  html: '<div class="w-8 h-8 bg-orange-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center animate-bounce">⚠️</div>',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
 });
 
 // AdNU Campus coordinates (Ateneo de Naga University)
-const CAMPUS_LOCATION = [13.630375791402535, 123.18515636738462];
+const CAMPUS_LOCATION = [13.6268, 123.1848];
 
 // Load warning zones from localStorage
 const getWarningZones = () => {
