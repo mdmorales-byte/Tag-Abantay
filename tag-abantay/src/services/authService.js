@@ -148,7 +148,7 @@ export const authService = {
           await this.createUserProfile(data.user.id, {
             email: data.user.email,
             full_name: userMetadata.full_name || email.split('@')[0],
-            role: email.toLowerCase().startsWith('admin@') ? 'admin' : 'student'
+            role: userMetadata.role || 'student'
           });
         } catch (profileErr) {
           console.error("Profile creation error:", profileErr);
@@ -158,6 +158,29 @@ export const authService = {
       return { data, error: null }
     } catch (error) {
       console.error("SignUp error:", error);
+      return { data: null, error }
+    }
+  },
+
+  /**
+   * Create user profile in users table
+   */
+  async createUserProfile(userId, profileData) {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.USERS)
+        .upsert({
+          id: userId,
+          ...profileData,
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return { data, error: null }
+    } catch (error) {
+      console.error("createUserProfile error:", error)
       return { data: null, error }
     }
   },

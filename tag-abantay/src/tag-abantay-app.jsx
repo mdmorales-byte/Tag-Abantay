@@ -1075,6 +1075,7 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [userRole, setUserRole] = useState('student');
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -1094,14 +1095,18 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           setLoading(false);
           return;
         }
-        const result = await handleSignUp(email, password, { full_name: fullName });
+        const result = await handleSignUp(email, password, { 
+          full_name: fullName,
+          role: userRole
+        });
         if (result.success) {
-          setSuccess('Registration successful! You can now sign in with your account.');
+          setSuccess('Registration successful! Please check your email for a confirmation link before signing in.');
           setFullName('');
           setEmail('');
           setPassword('');
-          // Switch to login after 3 seconds
-          setTimeout(() => setIsSignUp(false), 3000);
+          setUserRole('student');
+          // Switch to login after 5 seconds
+          setTimeout(() => setIsSignUp(false), 5000);
         } else {
           setError(result.error?.message || 'Sign up failed.');
         }
@@ -1172,18 +1177,42 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           )}
           
           {isSignUp && (
-            <div className="animate-slideDown">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Juan D. Dela Cruz"
-                className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
-                required={isSignUp}
-              />
+            <div className="animate-slideDown space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Juan D. Dela Cruz"
+                  className="w-full px-5 py-4 bg-slate-900/50 border border-white/10 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
+                  required={isSignUp}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">
+                  I am a
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {['student', 'faculty', 'staff'].map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setUserRole(role)}
+                      className={`py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${
+                        userRole === role 
+                          ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                          : 'bg-slate-900/50 border-white/5 text-slate-500 hover:border-white/10'
+                      }`}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
