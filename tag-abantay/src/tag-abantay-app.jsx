@@ -771,7 +771,7 @@ const warningIcon = L.divIcon({
 });
 
 // AdNU Campus coordinates (Ateneo de Naga University)
-const CAMPUS_LOCATION = [13.6268, 123.1848];
+const CAMPUS_LOCATION = [13.630573226785145, 123.1851269389405];
 
 // Load warning zones from localStorage
 const getWarningZones = () => {
