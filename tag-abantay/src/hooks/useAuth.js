@@ -92,6 +92,10 @@ export const useAuth = () => {
         if (result.error.isEmailError) {
           return { success: true, data: result.data, warning: result.error.message }
         }
+        // Handle already registered user
+        if (result.error.isExistingUser) {
+          return { success: false, error: { message: result.error.message }, isExistingUser: true }
+        }
         throw result.error
       }
 

@@ -1208,7 +1208,13 @@ function LoginPage({ handleLogin, handleSignUp, setCurrentPage }) {
           // Switch to login after 5 seconds
           setTimeout(() => setIsSignUp(false), 5000);
         } else {
-          setError(result.error?.message || 'Sign up failed.');
+          // Check if user already exists
+          if (result.isExistingUser) {
+            setSuccess(result.error?.message || 'This email is already registered.');
+            setTimeout(() => setIsSignUp(false), 3000);
+          } else {
+            setError(result.error?.message || 'Sign up failed.');
+          }
         }
       } else {
         const result = await handleLogin(email, password);

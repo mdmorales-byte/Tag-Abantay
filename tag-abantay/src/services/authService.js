@@ -145,24 +145,30 @@ export const authService = {
 
       // Handle email confirmation errors gracefully - user may still be created
       if (error) {
-        // Check if user was created despite email error
-        if (data?.user && error.message?.includes('confirmation email')) {
-          console.warn('User created but confirmation email failed:', error.message);
+        // Check if this is an email confirmation error (various error formats)
+        const isEmailError = error.message?.toLowerCase().includes('confirmation email') ||
+                            error.message?.toLowerCase().includes('error sending') ||
+                            error.message?.toLowerCase().includes('email');
+        
+        if (isEmailError) {
+          console.warn('Email confirmation error, but user may have been created:', error.message);
           
-          // Create profile for the user
-          try {
-            await this.createUserProfile(data.user.id, {
-              email: data.user.email,
-              full_name: userMetadata.full_name || email.split('@')[0],
-              role: userMetadata.role || 'student'
-            });
-          } catch (profileErr) {
-            console.error("Profile creation error:", profileErr);
+          // If we have user data, create profile
+          if (data?.user) {
+            try {
+              await this.createUserProfile(data.user.id, {
+                email: data.user.email,
+                full_name: userMetadata.full_name || email.split('@')[0],
+                role: userMetadata.role || 'student'
+              });
+            } catch (profileErr) {
+              console.error("Profile creation error:", profileErr);
+            }
           }
           
-          // Return success with warning - user can log in directly
+          // Return success with warning - user can try to log in
           return { 
-            data, 
+            data: data || { user: { email } }, 
             error: { 
               message: 'Account created! You can sign in now. (Email confirmation may be delayed)',
               isEmailError: true 
@@ -189,6 +195,18 @@ export const authService = {
       return { data, error: null }
     } catch (error) {
       console.error("SignUp error:", error);
+      
+      // Check if user already exists (from previous partial signup)
+      if (error.message?.includes('User already registered')) {
+        return { 
+          data: null, 
+          error: { 
+            message: 'This email is already registered. Please sign in instead.',
+            isExistingUser: true 
+          } 
+        }
+      }
+      
       return { data: null, error }
     }
   },
