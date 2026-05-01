@@ -89,14 +89,10 @@ export const checkInService = {
    */
   async createCheckIn(checkInData) {
     try {
-      // Get current user from localStorage or memory (passed from component)
-      // For now, we need to get the user ID from the auth context
-      // This will be handled by the calling component
-      
       const result = await supabaseFetch(TABLES.CHECK_INS, {
         method: 'POST',
         body: {
-          user_id: checkInData.userId, // Should be passed from component
+          user_id: checkInData.userId,
           status: checkInData.status,
           location: checkInData.location,
           notes: checkInData.notes,
@@ -106,10 +102,10 @@ export const checkInService = {
         select: '*'
       })
 
-      return { data: result.data?.[0], error: null }
+      return { success: true, data: result.data?.[0], error: null }
     } catch (error) {
-      // Silently handle - expected in demo mode
-      return { data: null, error: null }
+      console.error("checkInService: createCheckIn failed:", error.message);
+      return { success: false, data: null, error: error.message }
     }
   },
 

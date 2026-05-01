@@ -1707,6 +1707,17 @@ function AdminDashboard({ safetyStats: initialStats }) {
     }
   };
 
+  // Poll for stats updates
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      const interval = setInterval(() => {
+        loadSafetyStats();
+        loadCheckIns(false);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
+
   // Handle stat card click to filter users by status
   const handleStatClick = (status) => {
     setSelectedStatus(status);
