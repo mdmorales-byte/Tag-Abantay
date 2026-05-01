@@ -3766,7 +3766,7 @@ function AboutUsPage() {
     {
       name: 'Clark Adrian O. Dela Cruz',
       role: 'DATABASE DEVELOPER',
-      image: 'https://i.imgur.com/SPc6uhg.png',
+      image: 'https://i.imgur.com/IwkOwTf.png',
       linkedin: 'https://linkedin.com'
     },
     {
