@@ -770,7 +770,7 @@ const warningIcon = L.divIcon({
   popupAnchor: [0, -32]
 });
 
-// AdNU Campus coordinates (Ateneo de Naga University)
+// AdNU Campus coordinates (Ateneo de Naga University) - Verified accurate location
 const CAMPUS_LOCATION = [13.630573226785145, 123.1851269389405];
 
 // Load warning zones from localStorage
